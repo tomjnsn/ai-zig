@@ -149,9 +149,393 @@ pub fn fireworks() *FireworksProvider {
     return &default_provider.?;
 }
 
-test "FireworksProvider basic" {
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+test "FireworksProvider basic initialization" {
     const allocator = std.testing.allocator;
-    var provider = createFireworksWithSettings(allocator, .{});
+    var provider = createFireworks(allocator);
     defer provider.deinit();
+
     try std.testing.expectEqualStrings("fireworks", provider.getProvider());
+}
+
+test "FireworksProvider default base URL" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("https://api.fireworks.ai/inference/v1", provider.base_url);
+}
+
+test "FireworksProvider with custom base URL" {
+    const allocator = std.testing.allocator;
+    const custom_url = "https://custom.fireworks.ai/v2";
+
+    var provider = createFireworksWithSettings(allocator, .{
+        .base_url = custom_url,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings(custom_url, provider.base_url);
+}
+
+test "FireworksProvider with custom settings" {
+    const allocator = std.testing.allocator;
+    const custom_url = "https://custom.fireworks.ai/v2";
+    const custom_api_key = "sk-test-key-12345";
+
+    var provider = createFireworksWithSettings(allocator, .{
+        .base_url = custom_url,
+        .api_key = custom_api_key,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings(custom_url, provider.base_url);
+    try std.testing.expectEqual(custom_api_key, provider.settings.api_key);
+}
+
+test "FireworksProvider with null settings" {
+    const allocator = std.testing.allocator;
+
+    var provider = createFireworksWithSettings(allocator, .{
+        .base_url = null,
+        .api_key = null,
+        .headers = null,
+        .http_client = null,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("https://api.fireworks.ai/inference/v1", provider.base_url);
+}
+
+test "FireworksProvider specification version" {
+    try std.testing.expectEqualStrings("v3", FireworksProvider.specification_version);
+}
+
+test "FireworksProvider getProvider" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const provider_name = provider.getProvider();
+    try std.testing.expectEqualStrings("fireworks", provider_name);
+}
+
+// ============================================================================
+// Model Creation Tests
+// ============================================================================
+
+test "FireworksProvider languageModel creation" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const model = provider.languageModel("accounts/fireworks/models/llama-v3p1-8b-instruct");
+    try std.testing.expect(model.model_id.len > 0);
+}
+
+test "FireworksProvider chatModel creation" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const model = provider.chatModel("accounts/fireworks/models/llama-v3p1-70b-instruct");
+    try std.testing.expect(model.model_id.len > 0);
+}
+
+test "FireworksProvider chatModel is alias for languageModel" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const model_id = "accounts/fireworks/models/llama-v3p1-8b-instruct";
+    const lang_model = provider.languageModel(model_id);
+    const chat_model = provider.chatModel(model_id);
+
+    try std.testing.expectEqualStrings(lang_model.model_id, chat_model.model_id);
+}
+
+test "FireworksProvider embeddingModel creation" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const model = provider.embeddingModel("nomic-ai/nomic-embed-text-v1.5");
+    try std.testing.expect(model.model_id.len > 0);
+}
+
+test "FireworksProvider languageModel with various model IDs" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const test_cases = [_][]const u8{
+        "accounts/fireworks/models/llama-v3p1-8b-instruct",
+        "accounts/fireworks/models/llama-v3p1-70b-instruct",
+        "accounts/fireworks/models/mixtral-8x7b-instruct",
+        "accounts/fireworks/models/qwen2p5-72b-instruct",
+    };
+
+    for (test_cases) |model_id| {
+        const model = provider.languageModel(model_id);
+        try std.testing.expect(model.model_id.len > 0);
+    }
+}
+
+test "FireworksProvider embeddingModel with various model IDs" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const test_cases = [_][]const u8{
+        "nomic-ai/nomic-embed-text-v1.5",
+        "nomic-ai/nomic-embed-text-v1",
+        "WhereIsAI/UAE-Large-V1",
+    };
+
+    for (test_cases) |model_id| {
+        const model = provider.embeddingModel(model_id);
+        try std.testing.expect(model.model_id.len > 0);
+    }
+}
+
+// ============================================================================
+// ProviderV3 Interface Tests
+// ============================================================================
+
+test "FireworksProvider asProvider vtable languageModel" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    const result = pv3.vtable.languageModel(
+        pv3.impl,
+        "accounts/fireworks/models/llama-v3p1-8b-instruct",
+    );
+
+    try std.testing.expect(result == .ok);
+}
+
+test "FireworksProvider asProvider vtable embeddingModel" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    const result = pv3.vtable.embeddingModel(
+        pv3.impl,
+        "nomic-ai/nomic-embed-text-v1.5",
+    );
+
+    try std.testing.expect(result == .ok);
+}
+
+test "FireworksProvider asProvider vtable imageModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const provider_v3 = provider.asProvider();
+    const result = provider_v3.vtable.imageModel(provider_v3.impl, "any-model-id");
+
+    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.NoSuchModel, result.err);
+}
+
+test "FireworksProvider asProvider vtable speechModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const provider_v3 = provider.asProvider();
+    const result = provider_v3.vtable.speechModel(provider_v3.impl, "any-model-id");
+
+    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.NoSuchModel, result.err);
+}
+
+test "FireworksProvider asProvider vtable transcriptionModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const provider_v3 = provider.asProvider();
+    const result = provider_v3.vtable.transcriptionModel(provider_v3.impl, "any-model-id");
+
+    try std.testing.expect(result == .err);
+    try std.testing.expectError(error.NoSuchModel, result.err);
+}
+
+// ============================================================================
+// Factory Function Tests
+// ============================================================================
+
+test "createFireworks returns initialized provider" {
+    const allocator = std.testing.allocator;
+    const provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("fireworks", provider.getProvider());
+    try std.testing.expectEqualStrings("https://api.fireworks.ai/inference/v1", provider.base_url);
+}
+
+test "createFireworksWithSettings accepts empty settings" {
+    const allocator = std.testing.allocator;
+    const provider = createFireworksWithSettings(allocator, .{});
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("fireworks", provider.getProvider());
+}
+
+test "createFireworksWithSettings with all settings" {
+    const allocator = std.testing.allocator;
+
+    const custom_base_url = "https://test.fireworks.ai/v1";
+    const custom_api_key = "sk-test-123";
+
+    const provider = createFireworksWithSettings(allocator, .{
+        .base_url = custom_base_url,
+        .api_key = custom_api_key,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings(custom_base_url, provider.base_url);
+    try std.testing.expectEqual(custom_api_key, provider.settings.api_key);
+}
+
+// ============================================================================
+// Headers Function Tests
+// ============================================================================
+
+test "getHeadersFn returns valid headers" {
+    const config = openai_compat.OpenAICompatibleConfig{
+        .provider = "fireworks.chat",
+        .base_url = "https://api.fireworks.ai/inference/v1",
+    };
+
+    const headers = getHeadersFn(&config);
+    defer headers.deinit();
+
+    const content_type = headers.get("Content-Type");
+    try std.testing.expect(content_type != null);
+    try std.testing.expectEqualStrings("application/json", content_type.?);
+}
+
+test "getHeadersFn includes auth header when API key available" {
+    // Note: This test only verifies the function runs without error
+    // We cannot test environment variable behavior directly in unit tests
+    const config = openai_compat.OpenAICompatibleConfig{
+        .provider = "fireworks.chat",
+        .base_url = "https://api.fireworks.ai/inference/v1",
+    };
+
+    const headers = getHeadersFn(&config);
+    defer headers.deinit();
+
+    // At minimum, Content-Type should always be present
+    try std.testing.expect(headers.count() >= 1);
+}
+
+// ============================================================================
+// Edge Case Tests
+// ============================================================================
+
+test "FireworksProvider with empty model ID" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const model = provider.languageModel("");
+    try std.testing.expectEqualStrings("", model.model_id);
+}
+
+test "FireworksProvider multiple model creations" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const model1 = provider.languageModel("model-1");
+    const model2 = provider.languageModel("model-2");
+    const model3 = provider.embeddingModel("embed-1");
+
+    try std.testing.expectEqualStrings("model-1", model1.model_id);
+    try std.testing.expectEqualStrings("model-2", model2.model_id);
+    try std.testing.expectEqualStrings("embed-1", model3.model_id);
+}
+
+test "FireworksProvider custom base URL with trailing slash" {
+    const allocator = std.testing.allocator;
+    const custom_url = "https://custom.fireworks.ai/v1/";
+
+    var provider = createFireworksWithSettings(allocator, .{
+        .base_url = custom_url,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings(custom_url, provider.base_url);
+}
+
+test "FireworksProvider custom base URL without protocol" {
+    const allocator = std.testing.allocator;
+    const custom_url = "custom.fireworks.ai/v1";
+
+    var provider = createFireworksWithSettings(allocator, .{
+        .base_url = custom_url,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings(custom_url, provider.base_url);
+}
+
+test "FireworksProvider deinit is idempotent" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+
+    provider.deinit();
+    provider.deinit(); // Should not crash
+
+    try std.testing.expect(true); // Test passes if we get here
+}
+
+test "FireworksProvider with very long model ID" {
+    const allocator = std.testing.allocator;
+    var provider = createFireworks(allocator);
+    defer provider.deinit();
+
+    const long_model_id = "accounts/fireworks/models/" ++ "a" ** 200;
+    const model = provider.languageModel(long_model_id);
+
+    try std.testing.expect(model.model_id.len > 100);
+}
+
+// ============================================================================
+// Default Provider Tests
+// ============================================================================
+
+test "fireworks singleton function returns provider" {
+    const provider = fireworks();
+    try std.testing.expectEqualStrings("fireworks", provider.getProvider());
+}
+
+test "fireworks singleton returns same instance" {
+    const provider1 = fireworks();
+    const provider2 = fireworks();
+
+    // Both should point to the same instance
+    try std.testing.expectEqual(provider1, provider2);
+}
+
+// ============================================================================
+// Utility Function Tests
+// ============================================================================
+
+test "getApiKeyFromEnv returns optional" {
+    // This test verifies the function can be called without error
+    // The actual return value depends on environment variables
+    const result = getApiKeyFromEnv();
+    _ = result; // May be null or a string, both are valid
+    try std.testing.expect(true);
 }

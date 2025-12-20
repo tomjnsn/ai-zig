@@ -166,6 +166,7 @@ pub fn build(b: *std.Build) void {
     });
     fireworks_mod.addImport("provider", provider_mod);
     fireworks_mod.addImport("provider-utils", provider_utils_mod);
+    fireworks_mod.addImport("openai-compatible", openai_compatible_mod);
 
     // Cerebras provider
     const cerebras_mod = b.addModule("cerebras", .{
@@ -175,6 +176,7 @@ pub fn build(b: *std.Build) void {
     });
     cerebras_mod.addImport("provider", provider_mod);
     cerebras_mod.addImport("provider-utils", provider_utils_mod);
+    cerebras_mod.addImport("openai-compatible", openai_compatible_mod);
 
     // DeepInfra provider
     const deepinfra_mod = b.addModule("deepinfra", .{
@@ -184,6 +186,7 @@ pub fn build(b: *std.Build) void {
     });
     deepinfra_mod.addImport("provider", provider_mod);
     deepinfra_mod.addImport("provider-utils", provider_utils_mod);
+    deepinfra_mod.addImport("openai-compatible", openai_compatible_mod);
 
     // Replicate provider
     const replicate_mod = b.addModule("replicate", .{
@@ -202,6 +205,7 @@ pub fn build(b: *std.Build) void {
     });
     huggingface_mod.addImport("provider", provider_mod);
     huggingface_mod.addImport("provider-utils", provider_utils_mod);
+    huggingface_mod.addImport("openai-compatible", openai_compatible_mod);
 
     // ElevenLabs provider
     const elevenlabs_mod = b.addModule("elevenlabs", .{
@@ -355,6 +359,28 @@ pub fn build(b: *std.Build) void {
     perplexity_tests.root_module.addImport("openai-compatible", openai_compatible_mod);
     test_step.dependOn(&b.addRunArtifact(perplexity_tests).step);
 
+    // Fireworks tests
+    const fireworks_tests = b.addTest(.{
+        .root_source_file = b.path("packages/fireworks/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    fireworks_tests.root_module.addImport("provider", provider_mod);
+    fireworks_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    fireworks_tests.root_module.addImport("openai-compatible", openai_compatible_mod);
+    test_step.dependOn(&b.addRunArtifact(fireworks_tests).step);
+
+    // HuggingFace tests
+    const huggingface_tests = b.addTest(.{
+        .root_source_file = b.path("packages/huggingface/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    huggingface_tests.root_module.addImport("provider", provider_mod);
+    huggingface_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    huggingface_tests.root_module.addImport("openai-compatible", openai_compatible_mod);
+    test_step.dependOn(&b.addRunArtifact(huggingface_tests).step);
+
     // ElevenLabs tests
     const elevenlabs_tests = b.addTest(.{
         .root_source_file = b.path("packages/elevenlabs/src/index.zig"),
@@ -374,6 +400,38 @@ pub fn build(b: *std.Build) void {
     deepgram_tests.root_module.addImport("provider", provider_mod);
     deepgram_tests.root_module.addImport("provider-utils", provider_utils_mod);
     test_step.dependOn(&b.addRunArtifact(deepgram_tests).step);
+
+
+    // Cerebras tests
+    const cerebras_tests = b.addTest(.{
+        .root_source_file = b.path("packages/cerebras/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    cerebras_tests.root_module.addImport("provider", provider_mod);
+    cerebras_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    cerebras_tests.root_module.addImport("openai-compatible", openai_compatible_mod);
+    test_step.dependOn(&b.addRunArtifact(cerebras_tests).step);
+    // DeepInfra tests
+    const deepinfra_tests = b.addTest(.{
+        .root_source_file = b.path("packages/deepinfra/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    deepinfra_tests.root_module.addImport("provider", provider_mod);
+    deepinfra_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    deepinfra_tests.root_module.addImport("openai-compatible", openai_compatible_mod);
+    test_step.dependOn(&b.addRunArtifact(deepinfra_tests).step);
+
+    // Replicate tests
+    const replicate_tests = b.addTest(.{
+        .root_source_file = b.path("packages/replicate/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    replicate_tests.root_module.addImport("provider", provider_mod);
+    replicate_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    test_step.dependOn(&b.addRunArtifact(replicate_tests).step);
 
     // Example executable
     const example = b.addExecutable(.{

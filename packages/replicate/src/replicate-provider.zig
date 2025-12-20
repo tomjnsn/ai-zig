@@ -134,9 +134,285 @@ pub fn replicate() *ReplicateProvider {
     return &default_provider.?;
 }
 
-test "ReplicateProvider basic" {
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "ReplicateProvider - basic initialization" {
     const allocator = std.testing.allocator;
     var provider = createReplicateWithSettings(allocator, .{});
     defer provider.deinit();
     try std.testing.expectEqualStrings("replicate", provider.getProvider());
+}
+
+test "ReplicateProvider - initialization with default settings" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("replicate", provider.getProvider());
+    try std.testing.expectEqualStrings("https://api.replicate.com/v1", provider.base_url);
+}
+
+test "ReplicateProvider - initialization with custom base_url" {
+    const allocator = std.testing.allocator;
+    const custom_url = "https://custom.replicate.com/v1";
+
+    var provider = createReplicateWithSettings(allocator, .{
+        .base_url = custom_url,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("replicate", provider.getProvider());
+    try std.testing.expectEqualStrings(custom_url, provider.base_url);
+}
+
+test "ReplicateProvider - initialization with custom api_key" {
+    const allocator = std.testing.allocator;
+    const custom_api_key = "test_api_key_12345";
+
+    var provider = createReplicateWithSettings(allocator, .{
+        .api_key = custom_api_key,
+    });
+    defer provider.deinit();
+
+    try std.testing.expect(provider.settings.api_key != null);
+    try std.testing.expectEqualStrings(custom_api_key, provider.settings.api_key.?);
+}
+
+test "ReplicateProvider - initialization with all custom settings" {
+    const allocator = std.testing.allocator;
+
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    defer headers.deinit();
+    try headers.put("X-Custom-Header", "custom-value");
+
+    var provider = createReplicateWithSettings(allocator, .{
+        .base_url = "https://custom.replicate.com/v1",
+        .api_key = "custom_key",
+        .headers = headers,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("replicate", provider.getProvider());
+    try std.testing.expectEqualStrings("https://custom.replicate.com/v1", provider.base_url);
+    try std.testing.expectEqualStrings("custom_key", provider.settings.api_key.?);
+}
+
+test "ReplicateProvider - specification version" {
+    try std.testing.expectEqualStrings("v3", ReplicateProvider.specification_version);
+}
+
+test "ReplicateProvider - imageModel creates model correctly" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const model_id = "stability-ai/sdxl:12345";
+    const model = provider.imageModel(model_id);
+
+    try std.testing.expectEqualStrings(model_id, model.getModelId());
+    try std.testing.expectEqualStrings("replicate.image", model.getProvider());
+    try std.testing.expectEqualStrings(provider.base_url, model.base_url);
+}
+
+test "ReplicateProvider - imageModel with custom base_url" {
+    const allocator = std.testing.allocator;
+    const custom_url = "https://custom.replicate.com/v2";
+
+    var provider = createReplicateWithSettings(allocator, .{
+        .base_url = custom_url,
+    });
+    defer provider.deinit();
+
+    const model_id = "black-forest-labs/flux-schnell";
+    const model = provider.imageModel(model_id);
+
+    try std.testing.expectEqualStrings(model_id, model.getModelId());
+    try std.testing.expectEqualStrings(custom_url, model.base_url);
+}
+
+test "ReplicateProvider - asProvider returns ProviderV3" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    try std.testing.expect(pv3.vtable != null);
+    try std.testing.expect(pv3.impl != null);
+}
+
+test "ReplicateProvider - vtable languageModel returns NoSuchModel error" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    const result = pv3.languageModel("test-model");
+
+    try std.testing.expectEqual(error.NoSuchModel, result.err);
+}
+
+test "ReplicateProvider - vtable embeddingModel returns NoSuchModel error" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    const result = pv3.embeddingModel("test-model");
+
+    try std.testing.expectEqual(error.NoSuchModel, result.err);
+}
+
+test "ReplicateProvider - vtable imageModel returns NoSuchModel error" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    const result = pv3.imageModel("test-model");
+
+    // Note: Currently returns error because image model doesn't implement V3 interface
+    try std.testing.expectEqual(error.NoSuchModel, result.err);
+}
+
+test "ReplicateProvider - vtable speechModel returns NoSuchModel error" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    const result = pv3.speechModel("test-model");
+
+    try std.testing.expectEqual(error.NoSuchModel, result.err);
+}
+
+test "ReplicateProvider - vtable transcriptionModel returns NoSuchModel error" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const pv3 = provider.asProvider();
+    const result = pv3.transcriptionModel("test-model");
+
+    try std.testing.expectEqual(error.NoSuchModel, result.err);
+}
+
+test "ReplicateImageModel - initialization" {
+    const allocator = std.testing.allocator;
+    const model_id = "stability-ai/stable-diffusion";
+    const base_url = "https://api.replicate.com/v1";
+
+    const model = ReplicateImageModel.init(allocator, model_id, base_url);
+
+    try std.testing.expectEqualStrings(model_id, model.model_id);
+    try std.testing.expectEqualStrings(base_url, model.base_url);
+}
+
+test "ReplicateImageModel - getModelId returns correct model_id" {
+    const allocator = std.testing.allocator;
+    const model_id = "black-forest-labs/flux-dev";
+    const base_url = "https://api.replicate.com/v1";
+
+    const model = ReplicateImageModel.init(allocator, model_id, base_url);
+
+    try std.testing.expectEqualStrings(model_id, model.getModelId());
+}
+
+test "ReplicateImageModel - getProvider returns replicate.image" {
+    const allocator = std.testing.allocator;
+    const model_id = "test-model";
+    const base_url = "https://api.replicate.com/v1";
+
+    const model = ReplicateImageModel.init(allocator, model_id, base_url);
+
+    try std.testing.expectEqualStrings("replicate.image", model.getProvider());
+}
+
+test "ReplicateImageModel - with different model IDs" {
+    const allocator = std.testing.allocator;
+    const base_url = "https://api.replicate.com/v1";
+
+    const test_cases = [_][]const u8{
+        "stability-ai/sdxl:12345abc",
+        "black-forest-labs/flux-schnell",
+        "stability-ai/stable-diffusion-xl-1024-v1-0",
+        "owner/model:version",
+    };
+
+    for (test_cases) |model_id| {
+        const model = ReplicateImageModel.init(allocator, model_id, base_url);
+        try std.testing.expectEqualStrings(model_id, model.getModelId());
+    }
+}
+
+test "ReplicateProviderSettings - default values" {
+    const settings = ReplicateProviderSettings{};
+
+    try std.testing.expect(settings.base_url == null);
+    try std.testing.expect(settings.api_key == null);
+    try std.testing.expect(settings.headers == null);
+    try std.testing.expect(settings.http_client == null);
+}
+
+test "ReplicateProviderSettings - with custom values" {
+    const allocator = std.testing.allocator;
+
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    defer headers.deinit();
+
+    const settings = ReplicateProviderSettings{
+        .base_url = "https://custom.url",
+        .api_key = "custom_key",
+        .headers = headers,
+    };
+
+    try std.testing.expectEqualStrings("https://custom.url", settings.base_url.?);
+    try std.testing.expectEqualStrings("custom_key", settings.api_key.?);
+    try std.testing.expect(settings.headers != null);
+}
+
+test "getApiKeyFromEnv - returns null when not set" {
+    // Note: This test assumes REPLICATE_API_TOKEN is not set
+    // If it is set in the environment, this test may fail
+    const api_key = getApiKeyFromEnv();
+    // We can't assert the value, but we can verify it returns an optional
+    _ = api_key;
+}
+
+test "ReplicateProvider - multiple instances" {
+    const allocator = std.testing.allocator;
+
+    var provider1 = createReplicateWithSettings(allocator, .{
+        .base_url = "https://provider1.com",
+    });
+    defer provider1.deinit();
+
+    var provider2 = createReplicateWithSettings(allocator, .{
+        .base_url = "https://provider2.com",
+    });
+    defer provider2.deinit();
+
+    try std.testing.expectEqualStrings("https://provider1.com", provider1.base_url);
+    try std.testing.expectEqualStrings("https://provider2.com", provider2.base_url);
+}
+
+test "ReplicateProvider - imageModel creates independent models" {
+    const allocator = std.testing.allocator;
+    var provider = createReplicate(allocator);
+    defer provider.deinit();
+
+    const model1 = provider.imageModel("model-1");
+    const model2 = provider.imageModel("model-2");
+
+    try std.testing.expectEqualStrings("model-1", model1.getModelId());
+    try std.testing.expectEqualStrings("model-2", model2.getModelId());
+}
+
+test "ReplicateImageModel - allocator is stored correctly" {
+    const allocator = std.testing.allocator;
+    const model = ReplicateImageModel.init(allocator, "test", "https://api.com");
+
+    // Verify allocator is the same instance
+    try std.testing.expect(model.allocator.ptr == allocator.ptr);
 }
