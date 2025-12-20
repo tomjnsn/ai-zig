@@ -266,9 +266,9 @@ fn getHeadersFn(config: *const config_mod.AzureOpenAIConfig) std.StringHashMap([
 }
 
 /// Headers function for OpenAI config (used by models)
-fn getOpenAIHeadersFn(config: *const openai_config.OpenAIConfig) std.StringHashMap([]const u8) {
+fn getOpenAIHeadersFn(config: *const openai_config.OpenAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add API key header (Azure uses api-key instead of Authorization)
     if (getApiKeyFromEnv()) |api_key| {

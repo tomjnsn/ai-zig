@@ -148,7 +148,7 @@ pub const OpenAIChatLanguageModel = struct {
         const url = try self.config.buildUrl(request_allocator, "/chat/completions", self.model_id);
 
         // Get headers
-        var headers = self.config.getHeaders();
+        var headers = self.config.getHeaders(request_allocator);
         if (call_options.headers) |user_headers| {
             var iter = user_headers.iterator();
             while (iter.next()) |entry| {
@@ -357,7 +357,7 @@ pub const OpenAIChatLanguageModel = struct {
         const url = try self.config.buildUrl(request_allocator, "/chat/completions", self.model_id);
 
         // Get headers
-        var headers = self.config.getHeaders();
+        var headers = self.config.getHeaders(request_allocator);
         if (call_options.headers) |user_headers| {
             var iter = user_headers.iterator();
             while (iter.next()) |entry| {

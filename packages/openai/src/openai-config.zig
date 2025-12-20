@@ -40,7 +40,7 @@ pub const OpenAIConfig = struct {
     }
 
     /// Get headers for the request
-    pub fn getHeaders(self: *const Self) std.StringHashMap([]const u8) {
+    pub fn getHeaders(self: *const Self, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
         return self.headers_fn(self, allocator);
     }
 

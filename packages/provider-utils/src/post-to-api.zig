@@ -69,6 +69,7 @@ pub fn postJsonToApi(
         .name = "Content-Type",
         .value = "application/json",
     }) catch {
+        allocator.free(body);
         callbacks.on_error(callbacks.ctx, .{
             .info = errors.ApiCallError.init(.{
                 .message = "Failed to allocate headers",
@@ -81,7 +82,16 @@ pub fn postJsonToApi(
     // Add custom headers
     if (options.headers) |custom_headers| {
         for (custom_headers) |h| {
-            headers_list.append(h) catch continue;
+            headers_list.append(h) catch {
+                allocator.free(body);
+                callbacks.on_error(callbacks.ctx, .{
+                    .info = errors.ApiCallError.init(.{
+                        .message = "Failed to allocate headers",
+                        .url = options.url,
+                    }),
+                });
+                return;
+            };
         }
     }
 
@@ -90,9 +100,12 @@ pub fn postJsonToApi(
         original_callbacks: ApiCallbacks,
         url: []const u8,
         body_values: json_value.JsonValue,
+        body_string: []const u8,
+        allocator: std.mem.Allocator,
     };
 
     const ctx = allocator.create(CallbackContext) catch {
+        allocator.free(body);
         callbacks.on_error(callbacks.ctx, .{
             .info = errors.ApiCallError.init(.{
                 .message = "Failed to allocate callback context",
@@ -105,6 +118,8 @@ pub fn postJsonToApi(
         .original_callbacks = callbacks,
         .url = options.url,
         .body_values = options.body,
+        .body_string = body,
+        .allocator = allocator,
     };
 
     // Make the request
@@ -120,6 +135,10 @@ pub fn postJsonToApi(
         struct {
             fn onResponse(context: ?*anyopaque, response: http_client.HttpClient.Response) void {
                 const c: *CallbackContext = @ptrCast(@alignCast(context));
+                defer {
+                    c.allocator.free(c.body_string);
+                    c.allocator.destroy(c);
+                }
                 if (response.isSuccess()) {
                     c.original_callbacks.on_success(c.original_callbacks.ctx, .{
                         .body = response.body,
@@ -141,6 +160,10 @@ pub fn postJsonToApi(
         struct {
             fn onError(context: ?*anyopaque, err: http_client.HttpClient.HttpError) void {
                 const c: *CallbackContext = @ptrCast(@alignCast(context));
+                defer {
+                    c.allocator.free(c.body_string);
+                    c.allocator.destroy(c);
+                }
                 c.original_callbacks.on_error(c.original_callbacks.ctx, .{
                     .info = errors.ApiCallError.init(.{
                         .message = err.message,
@@ -177,6 +200,7 @@ pub fn postToApi(
     const CallbackContext = struct {
         original_callbacks: ApiCallbacks,
         url: []const u8,
+        allocator: std.mem.Allocator,
     };
 
     const ctx = allocator.create(CallbackContext) catch {
@@ -191,6 +215,7 @@ pub fn postToApi(
     ctx.* = .{
         .original_callbacks = callbacks,
         .url = options.url,
+        .allocator = allocator,
     };
 
     // Make the request
@@ -206,6 +231,7 @@ pub fn postToApi(
         struct {
             fn onResponse(context: ?*anyopaque, response: http_client.HttpClient.Response) void {
                 const c: *CallbackContext = @ptrCast(@alignCast(context));
+                defer c.allocator.destroy(c);
                 if (response.isSuccess()) {
                     c.original_callbacks.on_success(c.original_callbacks.ctx, .{
                         .body = response.body,
@@ -227,6 +253,7 @@ pub fn postToApi(
         struct {
             fn onError(context: ?*anyopaque, err: http_client.HttpClient.HttpError) void {
                 const c: *CallbackContext = @ptrCast(@alignCast(context));
+                defer c.allocator.destroy(c);
                 c.original_callbacks.on_error(c.original_callbacks.ctx, .{
                     .info = errors.ApiCallError.init(.{
                         .message = err.message,
@@ -277,6 +304,7 @@ pub fn postJsonToApiStreaming(
         .name = "Content-Type",
         .value = "application/json",
     }) catch {
+        allocator.free(body);
         callbacks.on_error(callbacks.ctx, .{
             .info = errors.ApiCallError.init(.{
                 .message = "Failed to allocate headers",
@@ -289,7 +317,16 @@ pub fn postJsonToApiStreaming(
     // Add custom headers
     if (options.headers) |custom_headers| {
         for (custom_headers) |h| {
-            headers_list.append(h) catch continue;
+            headers_list.append(h) catch {
+                allocator.free(body);
+                callbacks.on_error(callbacks.ctx, .{
+                    .info = errors.ApiCallError.init(.{
+                        .message = "Failed to allocate headers",
+                        .url = options.url,
+                    }),
+                });
+                return;
+            };
         }
     }
 
@@ -297,9 +334,12 @@ pub fn postJsonToApiStreaming(
     const CallbackContext = struct {
         original_callbacks: StreamingApiCallbacks,
         url: []const u8,
+        body_string: []const u8,
+        allocator: std.mem.Allocator,
     };
 
     const ctx = allocator.create(CallbackContext) catch {
+        allocator.free(body);
         callbacks.on_error(callbacks.ctx, .{
             .info = errors.ApiCallError.init(.{
                 .message = "Failed to allocate callback context",
@@ -311,6 +351,8 @@ pub fn postJsonToApiStreaming(
     ctx.* = .{
         .original_callbacks = callbacks,
         .url = options.url,
+        .body_string = body,
+        .allocator = allocator,
     };
 
     // Make the streaming request
@@ -344,12 +386,20 @@ pub fn postJsonToApiStreaming(
             .on_complete = struct {
                 fn onComplete(context: ?*anyopaque) void {
                     const c: *CallbackContext = @ptrCast(@alignCast(context));
+                    defer {
+                        c.allocator.free(c.body_string);
+                        c.allocator.destroy(c);
+                    }
                     c.original_callbacks.on_complete(c.original_callbacks.ctx);
                 }
             }.onComplete,
             .on_error = struct {
                 fn onError(context: ?*anyopaque, err: http_client.HttpClient.HttpError) void {
                     const c: *CallbackContext = @ptrCast(@alignCast(context));
+                    defer {
+                        c.allocator.free(c.body_string);
+                        c.allocator.destroy(c);
+                    }
                     c.original_callbacks.on_error(c.original_callbacks.ctx, .{
                         .info = errors.ApiCallError.init(.{
                             .message = err.message,

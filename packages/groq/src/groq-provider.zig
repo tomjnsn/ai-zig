@@ -151,9 +151,9 @@ fn getApiKeyFromEnv() ?[]const u8 {
 }
 
 /// Headers function for config
-fn getHeadersFn(config: *const config_mod.GroqConfig) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const config_mod.GroqConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add content-type
     headers.put("Content-Type", "application/json") catch {};
@@ -161,7 +161,7 @@ fn getHeadersFn(config: *const config_mod.GroqConfig) std.StringHashMap([]const 
     // Add authorization
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;

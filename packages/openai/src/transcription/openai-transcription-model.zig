@@ -101,7 +101,7 @@ pub const OpenAITranscriptionModel = struct {
         };
 
         // Get headers
-        var headers = self.config.getHeaders();
+        var headers = self.config.getHeaders(request_allocator);
         if (call_options.headers) |user_headers| {
             var iter = user_headers.iterator();
             while (iter.next()) |entry| {
