@@ -365,4 +365,22 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_example.step);
 
     b.installArtifact(example);
+
+    // Image generation example
+    const image_gen_example = b.addExecutable(.{
+        .name = "image-generation-example",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/image_generation.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    image_gen_example.root_module.addImport("ai", ai_mod);
+    image_gen_example.root_module.addImport("openai", openai_mod);
+
+    const run_image_gen_example = b.addRunArtifact(image_gen_example);
+    const run_image_gen_step = b.step("run-image-generation", "Run the image generation example");
+    run_image_gen_step.dependOn(&run_image_gen_example.step);
+
+    b.installArtifact(image_gen_example);
 }
