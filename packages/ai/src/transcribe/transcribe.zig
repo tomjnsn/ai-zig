@@ -199,11 +199,11 @@ pub fn parseSrt(
     allocator: std.mem.Allocator,
     srt_content: []const u8,
 ) ![]TranscriptionSegment {
-    var segments = std.ArrayList(TranscriptionSegment).init(allocator);
+    var segments = std.array_list.Managed(TranscriptionSegment).init(allocator);
 
     var lines = std.mem.splitScalar(u8, srt_content, '\n');
     var current_segment: ?TranscriptionSegment = null;
-    var text_buffer = std.ArrayList(u8).init(allocator);
+    var text_buffer = std.array_list.Managed(u8).init(allocator);
     var state: enum { index, timing, text } = .index;
 
     while (lines.next()) |line| {

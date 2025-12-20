@@ -119,7 +119,7 @@ pub const StreamObjectResult = struct {
         return .{
             .allocator = allocator,
             .options = options,
-            .raw_text = std.ArrayList(u8).init(allocator),
+            .raw_text = std.array_list.Managed(u8).init(allocator),
         };
     }
 

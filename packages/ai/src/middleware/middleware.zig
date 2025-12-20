@@ -98,8 +98,8 @@ pub const MiddlewareChain = struct {
     pub fn init(allocator: std.mem.Allocator) MiddlewareChain {
         return .{
             .allocator = allocator,
-            .request_middleware = std.ArrayList(RequestMiddleware).init(allocator),
-            .response_middleware = std.ArrayList(ResponseMiddleware).init(allocator),
+            .request_middleware = std.array_list.Managed(RequestMiddleware).init(allocator),
+            .response_middleware = std.array_list.Managed(ResponseMiddleware).init(allocator),
         };
     }
 

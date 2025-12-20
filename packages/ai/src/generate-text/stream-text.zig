@@ -176,11 +176,11 @@ pub const StreamTextResult = struct {
         return .{
             .allocator = allocator,
             .options = options,
-            .text = std.ArrayList(u8).init(allocator),
-            .reasoning_text = std.ArrayList(u8).init(allocator),
-            .tool_calls = std.ArrayList(ToolCall).init(allocator),
-            .tool_results = std.ArrayList(ToolResult).init(allocator),
-            .steps = std.ArrayList(StepResult).init(allocator),
+            .text = std.array_list.Managed(u8).init(allocator),
+            .reasoning_text = std.array_list.Managed(u8).init(allocator),
+            .tool_calls = std.array_list.Managed(ToolCall).init(allocator),
+            .tool_results = std.array_list.Managed(ToolResult).init(allocator),
+            .steps = std.array_list.Managed(StepResult).init(allocator),
         };
     }
 

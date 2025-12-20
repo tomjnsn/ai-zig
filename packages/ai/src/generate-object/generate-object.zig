@@ -120,7 +120,7 @@ pub fn generateObject(
     }
 
     // Build system prompt with schema instructions
-    var system_parts = std.ArrayList(u8).init(arena_allocator);
+    var system_parts = std.array_list.Managed(u8).init(arena_allocator);
     const writer = system_parts.writer();
 
     if (options.system) |sys| {
@@ -131,7 +131,7 @@ pub fn generateObject(
     writer.writeAll("You must respond with a valid JSON object matching the following schema:\n") catch return GenerateObjectError.OutOfMemory;
 
     // Serialize schema
-    var schema_buf = std.ArrayList(u8).init(arena_allocator);
+    var schema_buf = std.array_list.Managed(u8).init(arena_allocator);
     std.json.stringify(options.schema.json_schema, .{}, schema_buf.writer()) catch return GenerateObjectError.OutOfMemory;
     writer.writeAll(schema_buf.items) catch return GenerateObjectError.OutOfMemory;
 
@@ -226,7 +226,7 @@ test "parseJsonOutput simple object" {
     const text = "Here is the JSON: {\"name\": \"test\"}";
 
     const result = try parseJsonOutput(allocator, text);
-    defer _ = result; // Clean up parsed value
+    defer result.deinit(allocator); // Clean up parsed value
 
     try std.testing.expect(result == .object);
 }

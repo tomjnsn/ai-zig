@@ -253,7 +253,7 @@ pub fn generateText(
     }
 
     // Build initial prompt
-    var messages = std.ArrayList(Message).init(arena_allocator);
+    var messages = std.array_list.Managed(Message).init(arena_allocator);
 
     if (options.system) |sys| {
         messages.append(.{
@@ -274,7 +274,7 @@ pub fn generateText(
     }
 
     // Track steps
-    var steps = std.ArrayList(StepResult).init(arena_allocator);
+    var steps = std.array_list.Managed(StepResult).init(arena_allocator);
     var total_usage = LanguageModelUsage{};
 
     // Multi-step loop
