@@ -338,8 +338,8 @@ test "FireworksProvider asProvider vtable imageModel returns error" {
     var provider = createFireworks(allocator);
     defer provider.deinit();
 
-    const provider_v3 = provider.asProvider();
-    const result = provider_v3.vtable.imageModel(provider_v3.impl, "any-model-id");
+    const pv3 = provider.asProvider();
+    const result = pv3.vtable.imageModel(pv3.impl, "any-model-id");
 
     try std.testing.expect(result == .err);
     try std.testing.expectError(error.NoSuchModel, result.err);
@@ -350,8 +350,8 @@ test "FireworksProvider asProvider vtable speechModel returns error" {
     var provider = createFireworks(allocator);
     defer provider.deinit();
 
-    const provider_v3 = provider.asProvider();
-    const result = provider_v3.vtable.speechModel(provider_v3.impl, "any-model-id");
+    const pv3 = provider.asProvider();
+    const result = pv3.vtable.speechModel(pv3.impl, "any-model-id");
 
     try std.testing.expect(result == .err);
     try std.testing.expectError(error.NoSuchModel, result.err);
@@ -362,8 +362,8 @@ test "FireworksProvider asProvider vtable transcriptionModel returns error" {
     var provider = createFireworks(allocator);
     defer provider.deinit();
 
-    const provider_v3 = provider.asProvider();
-    const result = provider_v3.vtable.transcriptionModel(provider_v3.impl, "any-model-id");
+    const pv3 = provider.asProvider();
+    const result = pv3.vtable.transcriptionModel(pv3.impl, "any-model-id");
 
     try std.testing.expect(result == .err);
     try std.testing.expectError(error.NoSuchModel, result.err);
