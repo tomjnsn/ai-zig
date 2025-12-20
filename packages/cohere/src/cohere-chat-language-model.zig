@@ -72,7 +72,7 @@ pub const CohereChatLanguageModel = struct {
         }
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).init(request_allocator);
+        var body_buffer = std.array_list.Managed(u8).init(request_allocator);
         std.json.stringify(request_body, .{}, body_buffer.writer()) catch |err| {
             callback(null, err, callback_context);
             return;
@@ -180,7 +180,7 @@ pub const CohereChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "user" });
 
-                    var text_parts = std.ArrayList([]const u8).init(allocator);
+                    var text_parts = std.array_list.Managed([]const u8).init(allocator);
                     for (msg.content.user) |part| {
                         switch (part) {
                             .text => |t| try text_parts.append(t.text),
@@ -196,7 +196,7 @@ pub const CohereChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "assistant" });
 
-                    var text_content = std.ArrayList([]const u8).init(allocator);
+                    var text_content = std.array_list.Managed([]const u8).init(allocator);
                     var tool_calls = std.json.Array.init(allocator);
 
                     for (msg.content.assistant) |part| {

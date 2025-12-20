@@ -35,7 +35,7 @@ pub fn prepareTools(
     tools: ?[]const lm.LanguageModelV3Tool,
     tool_choice: ?lm.LanguageModelV3ToolChoice,
 ) !PreparedTools {
-    var warnings = std.ArrayList(shared.SharedV3Warning).init(allocator);
+    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
 
     // Handle empty or null tools
     if (tools == null or tools.?.len == 0) {
@@ -90,7 +90,7 @@ pub fn prepareTools(
             .tool => blk: {
                 // Filter tools to only the specified one
                 const tool_name = choice.tool_name orelse break :blk .any;
-                var filtered = std.ArrayList(MistralTool).init(allocator);
+                var filtered = std.array_list.Managed(MistralTool).init(allocator);
                 for (mistral_tools) |t| {
                     if (std.mem.eql(u8, t.function.name, tool_name)) {
                         try filtered.append(t);

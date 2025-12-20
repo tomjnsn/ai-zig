@@ -142,7 +142,7 @@ pub const DeepSeekChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "user" });
 
-                    var text_parts = std.ArrayList([]const u8).init(allocator);
+                    var text_parts = std.array_list.Managed([]const u8).init(allocator);
                     for (msg.content.user) |part| {
                         switch (part) {
                             .text => |t| try text_parts.append(t.text),
@@ -158,7 +158,7 @@ pub const DeepSeekChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "assistant" });
 
-                    var text_content = std.ArrayList([]const u8).init(allocator);
+                    var text_content = std.array_list.Managed([]const u8).init(allocator);
                     var tool_calls = std.json.Array.init(allocator);
 
                     for (msg.content.assistant) |part| {
