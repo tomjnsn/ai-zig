@@ -252,10 +252,10 @@ test "XaiProvider asProvider languageModel success" {
 
     switch (result) {
         .success => |model| {
-            try std.testing.expect(model.vtable != null);
+            try std.testing.expect(@intFromPtr(model.vtable) != 0);
         },
-        .failure => |err| {
-            std.debug.print("Unexpected error: {}\n", .{err});
+        .failure, .no_such_model => |err| {
+            std.debug.print("Unexpected error: {any}\n", .{err});
             try std.testing.expect(false);
         },
     }
