@@ -130,10 +130,9 @@ pub fn generateObject(
 
     writer.writeAll("You must respond with a valid JSON object matching the following schema:\n") catch return GenerateObjectError.OutOfMemory;
 
-    // Serialize schema
-    var schema_buf = std.array_list.Managed(u8).init(arena_allocator);
-    std.json.stringify(options.schema.json_schema, .{}, schema_buf.writer()) catch return GenerateObjectError.OutOfMemory;
-    writer.writeAll(schema_buf.items) catch return GenerateObjectError.OutOfMemory;
+    // Serialize schema using valueAlloc
+    const schema_json = std.json.Stringify.valueAlloc(arena_allocator, options.schema.json_schema, .{}) catch return GenerateObjectError.OutOfMemory;
+    writer.writeAll(schema_json) catch return GenerateObjectError.OutOfMemory;
 
     // TODO: Call model with prepared prompt
     // For now, return a placeholder result
@@ -155,7 +154,7 @@ pub fn generateObject(
 pub fn parseJsonOutput(
     allocator: std.mem.Allocator,
     text: []const u8,
-) !std.json.Value {
+) !std.json.Parsed(std.json.Value) {
     // Try to find JSON in the output
     var json_start: ?usize = null;
     var json_end: ?usize = null;
@@ -186,10 +185,9 @@ pub fn parseJsonOutput(
         if (json_end) |end| {
             if (end > start) {
                 const json_text = text[start..end];
-                const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_text, .{}) catch {
+                return std.json.parseFromSlice(std.json.Value, allocator, json_text, .{}) catch {
                     return error.InvalidJson;
                 };
-                return parsed.value;
             }
         }
     }
@@ -225,8 +223,8 @@ test "parseJsonOutput simple object" {
     const allocator = std.testing.allocator;
     const text = "Here is the JSON: {\"name\": \"test\"}";
 
-    const result = try parseJsonOutput(allocator, text);
-    defer result.deinit(allocator); // Clean up parsed value
+    const parsed = try parseJsonOutput(allocator, text);
+    defer parsed.deinit();
 
-    try std.testing.expect(result == .object);
+    try std.testing.expect(parsed.value == .object);
 }

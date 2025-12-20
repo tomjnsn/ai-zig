@@ -143,19 +143,19 @@ pub const StreamTextResult = struct {
     options: StreamTextOptions,
 
     /// The accumulated text so far
-    text: std.ArrayList(u8),
+    text: std.array_list.Managed(u8),
 
     /// The accumulated reasoning text
-    reasoning_text: std.ArrayList(u8),
+    reasoning_text: std.array_list.Managed(u8),
 
     /// Tool calls collected
-    tool_calls: std.ArrayList(ToolCall),
+    tool_calls: std.array_list.Managed(ToolCall),
 
     /// Tool results collected
-    tool_results: std.ArrayList(ToolResult),
+    tool_results: std.array_list.Managed(ToolResult),
 
     /// Steps completed
-    steps: std.ArrayList(StepResult),
+    steps: std.array_list.Managed(StepResult),
 
     /// Current finish reason
     finish_reason: ?FinishReason = null,

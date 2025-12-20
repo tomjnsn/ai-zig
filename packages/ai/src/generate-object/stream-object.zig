@@ -98,7 +98,7 @@ pub const StreamObjectResult = struct {
     options: StreamObjectOptions,
 
     /// The accumulated raw text
-    raw_text: std.ArrayList(u8),
+    raw_text: std.array_list.Managed(u8),
 
     /// Current partial object (may be null if parsing failed)
     partial_object: ?std.json.Value = null,
@@ -148,10 +148,13 @@ pub const StreamObjectResult = struct {
             .partial => |delta| {
                 try self.raw_text.appendSlice(delta.text);
                 // Try to parse partial JSON
-                self.partial_object = generate_object.parseJsonOutput(
-                    self.allocator,
-                    self.raw_text.items,
-                ) catch null;
+                // Note: We extract .value and leak the Parsed wrapper here.
+                // The memory will be cleaned up when self.allocator is freed.
+                if (generate_object.parseJsonOutput(self.allocator, self.raw_text.items)) |parsed| {
+                    self.partial_object = parsed.value;
+                } else |_| {
+                    self.partial_object = null;
+                }
             },
             .object_update => |update| {
                 self.partial_object = update.partial_object;

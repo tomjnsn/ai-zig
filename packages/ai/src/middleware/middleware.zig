@@ -92,8 +92,8 @@ pub const MiddlewareContext = struct {
 /// Middleware chain for processing requests/responses
 pub const MiddlewareChain = struct {
     allocator: std.mem.Allocator,
-    request_middleware: std.ArrayList(RequestMiddleware),
-    response_middleware: std.ArrayList(ResponseMiddleware),
+    request_middleware: std.array_list.Managed(RequestMiddleware),
+    response_middleware: std.array_list.Managed(ResponseMiddleware),
 
     pub fn init(allocator: std.mem.Allocator) MiddlewareChain {
         return .{
@@ -161,24 +161,47 @@ pub const DefaultSettingsMiddleware = struct {
     }
 };
 
-/// Logging middleware - logs requests and responses
-pub fn createLoggingMiddleware(
+/// Logging middleware context - stores the log function
+pub const LoggingMiddlewareContext = struct {
     log_fn: *const fn ([]const u8) void,
-) struct { request: RequestMiddleware, response: ResponseMiddleware } {
+
+    const key = "logging_middleware_context";
+
+    pub fn init(log_fn: *const fn ([]const u8) void) LoggingMiddlewareContext {
+        return .{ .log_fn = log_fn };
+    }
+
+    pub fn store(self: *LoggingMiddlewareContext, context: *MiddlewareContext) !void {
+        try context.set(key, @ptrCast(self));
+    }
+
+    pub fn retrieve(context: *MiddlewareContext) ?*LoggingMiddlewareContext {
+        if (context.get(key)) |ptr| {
+            return @ptrCast(@alignCast(ptr));
+        }
+        return null;
+    }
+};
+
+/// Logging middleware - logs requests and responses
+/// Note: You must store a LoggingMiddlewareContext in the MiddlewareContext before using these middleware functions
+pub fn createLoggingMiddleware() struct { request: RequestMiddleware, response: ResponseMiddleware } {
     const RequestLogger = struct {
         fn process(request: *MiddlewareRequest, context: *MiddlewareContext) anyerror!void {
-            _ = context;
-            if (request.prompt) |p| {
-                log_fn(p);
+            if (LoggingMiddlewareContext.retrieve(context)) |ctx| {
+                if (request.prompt) |p| {
+                    ctx.log_fn(p);
+                }
             }
         }
     };
 
     const ResponseLogger = struct {
         fn process(response: *MiddlewareResponse, context: *MiddlewareContext) anyerror!void {
-            _ = context;
-            if (response.text) |t| {
-                log_fn(t);
+            if (LoggingMiddlewareContext.retrieve(context)) |ctx| {
+                if (response.text) |t| {
+                    ctx.log_fn(t);
+                }
             }
         }
     };
