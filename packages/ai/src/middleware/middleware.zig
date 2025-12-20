@@ -1,5 +1,5 @@
 const std = @import("std");
-const provider_types = @import("../../../provider/src/language-model/v3/index.zig");
+const provider_types = @import("provider");
 const generate_text = @import("../generate-text/generate-text.zig");
 
 const LanguageModelV3 = provider_types.LanguageModelV3;
@@ -150,11 +150,14 @@ pub const DefaultSettingsMiddleware = struct {
 
     pub fn process(request: *MiddlewareRequest, context: *MiddlewareContext) anyerror!void {
         _ = context;
-        const self = @fieldParentPtr(DefaultSettingsMiddleware, "defaults", &request.settings);
-        _ = self;
+        _ = request;
 
         // Apply defaults if not set
         // This is a simplified version - would need proper integration
+        // Note: @fieldParentPtr API changed in Zig 0.15
+        // Old: @fieldParentPtr(Type, "field", ptr)
+        // New: @fieldParentPtr(ptr, @offsetOf(Type, "field"))
+        // This middleware needs restructuring to work with the new API
     }
 };
 
