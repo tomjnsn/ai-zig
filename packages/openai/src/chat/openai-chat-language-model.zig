@@ -416,9 +416,20 @@ pub const OpenAIChatLanguageModel = struct {
     const vtable = lm.LanguageModelV3.VTable{
         .getProvider = getProviderVtable,
         .getModelId = getModelIdVtable,
+        .getSupportedUrls = getSupportedUrlsVtable,
         .doGenerate = doGenerateVtable,
         .doStream = doStreamVtable,
     };
+
+    fn getSupportedUrlsVtable(
+        impl: *anyopaque,
+        allocator: std.mem.Allocator,
+        callback: *const fn (?*anyopaque, lm.LanguageModelV3.SupportedUrlsResult) void,
+        ctx: ?*anyopaque,
+    ) void {
+        _ = impl;
+        callback(ctx, .{ .success = std.StringHashMap([]const []const u8).init(allocator) });
+    }
 
     fn getProviderVtable(impl: *anyopaque) []const u8 {
         const self: *Self = @ptrCast(@alignCast(impl));
@@ -443,7 +454,7 @@ pub const OpenAIChatLanguageModel = struct {
             fn wrap(ctx: ?*anyopaque, result: GenerateResult) void {
                 const cb_data = @as(*const struct { cb: *const fn (?*anyopaque, lm.LanguageModelV3.GenerateResult) void, user_ctx: ?*anyopaque }, @ptrCast(@alignCast(ctx)));
                 switch (result) {
-                    .success => |ok| {
+                    .ok => |ok| {
                         cb_data.cb(cb_data.user_ctx, .{
                             .success = .{
                                 .content = ok.content,
@@ -453,7 +464,7 @@ pub const OpenAIChatLanguageModel = struct {
                             },
                         });
                     },
-                    .failure => |err| {
+                    .err => |err| {
                         cb_data.cb(cb_data.user_ctx, .{ .failure = err });
                     },
                 }
@@ -469,23 +480,10 @@ pub const OpenAIChatLanguageModel = struct {
         allocator: std.mem.Allocator,
         callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) void {
-        const self: *Self = @ptrCast(@alignCast(impl));
-        // Convert to provider_utils callbacks
-        const compat_callbacks = provider_utils.StreamCallbacks(lm.LanguageModelV3StreamPart){
-            .on_part = callbacks.on_part,
-            .on_error = callbacks.on_error,
-            .on_complete = struct {
-                fn onComplete(ctx: ?*anyopaque, _: ?anyerror) void {
-                    callbacks.on_complete(ctx, null);
-                }
-            }.onComplete,
-            .ctx = callbacks.ctx,
-        };
-        _ = compat_callbacks;
+        _ = impl;
         _ = allocator;
         _ = options;
-        _ = self;
-        // Stub for now
+        // Stub for now - streaming not yet implemented
         callbacks.on_complete(callbacks.ctx, null);
     }
 };

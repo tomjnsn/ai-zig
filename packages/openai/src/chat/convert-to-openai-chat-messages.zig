@@ -120,13 +120,14 @@ fn convertMessage(
                         }
                     },
                     .tool_call => |tc| {
-                        // input is already stringified JSON
+                        // Stringify the JsonValue input
+                        const input_str = try tc.input.stringify(allocator);
                         try tool_calls.append(.{
                             .id = tc.tool_call_id,
                             .type = "function",
                             .function = .{
                                 .name = tc.tool_name,
-                                .arguments = tc.input,
+                                .arguments = input_str,
                             },
                         });
                     },
