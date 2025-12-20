@@ -1,6 +1,7 @@
 const std = @import("std");
 const lm = @import("provider").language_model;
 const shared = @import("provider").shared;
+const json_value = @import("provider").json_value;
 const options_mod = @import("mistral-options.zig");
 
 /// Prepared tools result
@@ -25,14 +26,14 @@ pub const MistralTool = struct {
 pub const MistralFunction = struct {
     name: []const u8,
     description: ?[]const u8 = null,
-    parameters: std.json.Value,
+    parameters: json_value.JsonValue,
     strict: ?bool = null,
 };
 
 /// Prepare tools for Mistral API
 pub fn prepareTools(
     allocator: std.mem.Allocator,
-    tools: ?[]const lm.LanguageModelV3Tool,
+    tools: ?[]const lm.LanguageModelV3CallOptions.Tool,
     tool_choice: ?lm.LanguageModelV3ToolChoice,
 ) !PreparedTools {
     var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
@@ -66,12 +67,13 @@ pub fn prepareTools(
             },
             .provider => |prov| {
                 try warnings.append(.{
-                    .type = .unsupported,
-                    .feature = try std.fmt.allocPrint(
-                        allocator,
-                        "provider-defined tool {s}",
-                        .{prov.id},
-                    ),
+                    .unsupported = .{
+                        .feature = try std.fmt.allocPrint(
+                            allocator,
+                            "provider-defined tool {s}",
+                            .{prov.id},
+                        ),
+                    },
                 });
             },
         }
@@ -83,17 +85,17 @@ pub fn prepareTools(
     // Convert tool choice
     var mistral_tool_choice: ?options_mod.MistralToolChoice = null;
     if (tool_choice) |choice| {
-        mistral_tool_choice = switch (choice.type) {
+        mistral_tool_choice = switch (choice) {
             .auto => .auto,
             .none => .none,
             .required => .any,
-            .tool => blk: {
+            .tool => |t| blk: {
                 // Filter tools to only the specified one
-                const tool_name = choice.tool_name orelse break :blk .any;
+                const tool_name = t.tool_name;
                 var filtered = std.array_list.Managed(MistralTool).init(allocator);
-                for (mistral_tools) |t| {
-                    if (std.mem.eql(u8, t.function.name, tool_name)) {
-                        try filtered.append(t);
+                for (mistral_tools) |tool| {
+                    if (std.mem.eql(u8, tool.function.name, tool_name)) {
+                        try filtered.append(tool);
                     }
                 }
                 mistral_tools = try filtered.toOwnedSlice();
@@ -125,7 +127,8 @@ pub fn serializeToolsToJson(
         if (tool.function.description) |desc| {
             try func_obj.put("description", .{ .string = desc });
         }
-        try func_obj.put("parameters", tool.function.parameters);
+        const params_std_json = try tool.function.parameters.toStdJson(allocator);
+        try func_obj.put("parameters", params_std_json);
         if (tool.function.strict) |strict| {
             try func_obj.put("strict", .{ .bool = strict });
         }

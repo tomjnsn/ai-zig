@@ -77,7 +77,7 @@ pub const MistralEmbeddingModel = struct {
 
         // Check max embeddings
         if (values.len > max_embeddings_per_call) {
-            callback(callback_context, .{ .failure = error.TooManyEmbeddingValues, callback_context);
+            callback(callback_context, .{ .failure = error.TooManyEmbeddingValues });
             return;
         }
 
@@ -166,5 +166,5 @@ test "MistralEmbeddingModel init" {
     );
 
     try std.testing.expectEqualStrings("mistral-embed", model.getModelId());
-    try std.testing.expectEqual(@as(usize, 32), model.getMaxEmbeddingsPerCall());
+    try std.testing.expectEqual(MistralEmbeddingModel.max_embeddings_per_call, 32);
 }

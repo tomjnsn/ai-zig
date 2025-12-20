@@ -79,9 +79,10 @@ pub const MistralChatLanguageModel = struct {
             return;
         };
 
+        // TODO: Use url, headers, and body_buffer to make actual HTTP request
         _ = url;
-        _ = headers;
-        _ = body_buffer;
+        headers.deinit();
+        body_buffer.deinit();
 
         // For now, return placeholder result
         const result = lm.LanguageModelV3.GenerateSuccess{
@@ -339,7 +340,6 @@ pub const MistralChatLanguageModel = struct {
         ctx: ?*anyopaque,
     ) void {
         _ = self;
-        _ = allocator;
         callback(ctx, .{ .success = std.StringHashMap([]const []const u8).init(allocator) });
     }
 
