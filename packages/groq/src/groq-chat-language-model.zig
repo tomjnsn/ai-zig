@@ -85,16 +85,9 @@ pub const GroqChatLanguageModel = struct {
             headers = headers_fn(&self.config);
         }
 
-        // Serialize request body
-        var body_buffer = std.array_list.Managed(u8).init(request_allocator);
-        std.json.stringify(request_body, .{}, body_buffer.writer()) catch |err| {
-            callback(callback_context, .{ .failure = err });
-            return;
-        };
-
         _ = url;
+        _ = request_body;
         _ = result_allocator;
-        _ = body_buffer.items;
         _ = headers.count();
 
         // For now, return placeholder result
@@ -103,8 +96,8 @@ pub const GroqChatLanguageModel = struct {
                 .content = &[_]lm.LanguageModelV3Content{},
                 .finish_reason = .stop,
                 .usage = .{
-                    .prompt_tokens = 0,
-                    .completion_tokens = 0,
+                    .input_tokens = .{ .total = 0 },
+                    .output_tokens = .{ .total = 0 },
                 },
                 .warnings = &[_]shared.SharedV3Warning{},
             },
@@ -150,15 +143,15 @@ pub const GroqChatLanguageModel = struct {
         _ = result_allocator;
 
         // Emit stream start
-        callbacks.on_part(callbacks.ctx, .{ .stream_start = .{} });
+        callbacks.on_part(callbacks.ctx, .{ .stream_start = .{ .warnings = &[_]shared.SharedV3Warning{} } });
 
         // For now, emit completion
         callbacks.on_part(callbacks.ctx, .{
             .finish = .{
                 .finish_reason = .stop,
                 .usage = .{
-                    .prompt_tokens = 0,
-                    .completion_tokens = 0,
+                    .input_tokens = .{ .total = 0 },
+                    .output_tokens = .{ .total = 0 },
                 },
             },
         });
@@ -192,10 +185,10 @@ pub const GroqChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "user" });
 
-                    var text_parts = std.array_list.Managed([]const u8).init(allocator);
+                    var text_parts = std.ArrayListUnmanaged([]const u8){};
                     for (msg.content.user) |part| {
                         switch (part) {
-                            .text => |t| try text_parts.append(t.text),
+                            .text => |t| try text_parts.append(allocator, t.text),
                             else => {},
                         }
                     }
@@ -208,12 +201,12 @@ pub const GroqChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "assistant" });
 
-                    var text_content = std.array_list.Managed([]const u8).init(allocator);
+                    var text_content = std.ArrayListUnmanaged([]const u8){};
                     var tool_calls = std.json.Array.init(allocator);
 
                     for (msg.content.assistant) |part| {
                         switch (part) {
-                            .text => |t| try text_content.append(t.text),
+                            .text => |t| try text_content.append(allocator, t.text),
                             .tool_call => |tc| {
                                 var tool_call = std.json.ObjectMap.init(allocator);
                                 try tool_call.put("id", .{ .string = tc.tool_call_id });
@@ -429,8 +422,9 @@ test "GroqChatLanguageModel asLanguageModel interface" {
     );
 
     const lang_model = model.asLanguageModel();
-    // VTable functions are always non-null, just verify the vtable exists
-    try std.testing.expect(lang_model.vtable == &vtable);
+    // Just verify we can get the model ID and provider through the interface
+    try std.testing.expectEqualStrings("llama-3.3-70b-versatile", lang_model.getModelId());
+    try std.testing.expectEqualStrings("groq", lang_model.getProvider());
 }
 
 test "GroqChatLanguageModel multiple instances with different models" {
@@ -479,8 +473,11 @@ test "GroqChatLanguageModel buildRequestBody with simple prompt" {
 
     const request_body = try model.buildRequestBody(allocator, call_options);
     defer {
-        if (request_body == .object) {
-            request_body.object.deinit();
+        // Note: Using arena allocator, so manual deinit not needed
+        // but we keep this structure for when we test with different allocators
+        var mutable_body = request_body;
+        if (mutable_body == .object) {
+            mutable_body.object.deinit();
         }
     }
 
@@ -520,8 +517,11 @@ test "GroqChatLanguageModel buildRequestBody with max_tokens" {
 
     const request_body = try model.buildRequestBody(allocator, call_options);
     defer {
-        if (request_body == .object) {
-            request_body.object.deinit();
+        // Note: Using arena allocator, so manual deinit not needed
+        // but we keep this structure for when we test with different allocators
+        var mutable_body = request_body;
+        if (mutable_body == .object) {
+            mutable_body.object.deinit();
         }
     }
 
@@ -561,8 +561,11 @@ test "GroqChatLanguageModel buildRequestBody with temperature and top_p" {
 
     const request_body = try model.buildRequestBody(allocator, call_options);
     defer {
-        if (request_body == .object) {
-            request_body.object.deinit();
+        // Note: Using arena allocator, so manual deinit not needed
+        // but we keep this structure for when we test with different allocators
+        var mutable_body = request_body;
+        if (mutable_body == .object) {
+            mutable_body.object.deinit();
         }
     }
 
@@ -607,8 +610,11 @@ test "GroqChatLanguageModel buildRequestBody with seed" {
 
     const request_body = try model.buildRequestBody(allocator, call_options);
     defer {
-        if (request_body == .object) {
-            request_body.object.deinit();
+        // Note: Using arena allocator, so manual deinit not needed
+        // but we keep this structure for when we test with different allocators
+        var mutable_body = request_body;
+        if (mutable_body == .object) {
+            mutable_body.object.deinit();
         }
     }
 
@@ -650,8 +656,11 @@ test "GroqChatLanguageModel buildRequestBody with stop sequences" {
 
     const request_body = try model.buildRequestBody(allocator, call_options);
     defer {
-        if (request_body == .object) {
-            request_body.object.deinit();
+        // Note: Using arena allocator, so manual deinit not needed
+        // but we keep this structure for when we test with different allocators
+        var mutable_body = request_body;
+        if (mutable_body == .object) {
+            mutable_body.object.deinit();
         }
     }
 
@@ -695,8 +704,11 @@ test "GroqChatLanguageModel buildRequestBody with system message" {
 
     const request_body = try model.buildRequestBody(allocator, call_options);
     defer {
-        if (request_body == .object) {
-            request_body.object.deinit();
+        // Note: Using arena allocator, so manual deinit not needed
+        // but we keep this structure for when we test with different allocators
+        var mutable_body = request_body;
+        if (mutable_body == .object) {
+            mutable_body.object.deinit();
         }
     }
 
