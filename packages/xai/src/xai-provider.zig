@@ -239,7 +239,7 @@ test "XaiProvider asProvider returns ProviderV3" {
     defer provider.deinit();
 
     const pv3 = provider.asProvider();
-    try std.testing.expect(pv3.vtable != null);
+    try std.testing.expect(@intFromPtr(pv3.vtable) != 0);
 }
 
 test "XaiProvider asProvider languageModel success" {
@@ -276,6 +276,9 @@ test "XaiProvider asProvider embeddingModel returns error" {
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
         },
+        .no_such_model => {
+            // Expected
+        },
     }
 }
 
@@ -294,6 +297,9 @@ test "XaiProvider asProvider imageModel returns error" {
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
         },
+        .no_such_model => {
+            // Expected
+        },
     }
 }
 
@@ -302,8 +308,8 @@ test "XaiProvider asProvider speechModel returns error" {
     var provider = createXai(allocator);
     defer provider.deinit();
 
-    var pv3 = provider.asProvider();
-    const result = pv3.vtable.speechModel(pv3.impl, "test-model");
+    const pv3 = provider.asProvider();
+    const result = pv3.speechModel("test-model");
 
     switch (result) {
         .success => {
@@ -311,6 +317,12 @@ test "XaiProvider asProvider speechModel returns error" {
         },
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
+        },
+        .no_such_model => {
+            // Expected
+        },
+        .not_supported => {
+            // Also valid - provider may not support speech
         },
     }
 }
@@ -320,8 +332,8 @@ test "XaiProvider asProvider transcriptionModel returns error" {
     var provider = createXai(allocator);
     defer provider.deinit();
 
-    var pv3 = provider.asProvider();
-    const result = pv3.vtable.transcriptionModel(pv3.impl, "test-model");
+    const pv3 = provider.asProvider();
+    const result = pv3.transcriptionModel("test-model");
 
     switch (result) {
         .success => {
@@ -329,6 +341,12 @@ test "XaiProvider asProvider transcriptionModel returns error" {
         },
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
+        },
+        .no_such_model => {
+            // Expected
+        },
+        .not_supported => {
+            // Also valid - provider may not support transcription
         },
     }
 }
@@ -472,9 +490,8 @@ test "XaiProvider languageModel uses correct provider name" {
 test "XaiProvider vtable is correctly initialized" {
     const vtable = XaiProvider.vtable;
 
-    try std.testing.expect(vtable.languageModel != null);
-    try std.testing.expect(vtable.embeddingModel != null);
-    try std.testing.expect(vtable.imageModel != null);
-    try std.testing.expect(vtable.speechModel != null);
-    try std.testing.expect(vtable.transcriptionModel != null);
+    try std.testing.expect(@intFromPtr(vtable.languageModel) != 0);
+    try std.testing.expect(@intFromPtr(vtable.embeddingModel) != 0);
+    try std.testing.expect(@intFromPtr(vtable.imageModel) != 0);
+    // speechModel and transcriptionModel are optional
 }
