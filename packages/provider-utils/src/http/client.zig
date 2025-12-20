@@ -238,9 +238,9 @@ test "RequestBuilder" {
     var builder = RequestBuilder.init(allocator);
     defer builder.deinit();
 
-    _ = try builder.method(.POST)
+    _ = try (try builder.method(.POST)
         .url("https://api.example.com/v1/chat")
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json"))
         .header("Authorization", "Bearer token123");
     _ = builder.body("{\"message\": \"hello\"}")
         .timeout(30000);
@@ -407,11 +407,11 @@ test "RequestBuilder multiple headers" {
     var builder = RequestBuilder.init(allocator);
     defer builder.deinit();
 
-    _ = try builder
+    _ = try (try (try builder
         .method(.POST)
         .url("https://api.example.com/v1/chat")
-        .header("Content-Type", "application/json")
-        .header("Authorization", "Bearer token")
+        .header("Content-Type", "application/json"))
+        .header("Authorization", "Bearer token"))
         .header("X-Custom-Header", "value");
 
     const req = builder.build();
