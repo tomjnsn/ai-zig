@@ -42,19 +42,34 @@ pub const MistralEmbeddingModel = struct {
     }
 
     /// Get the maximum embeddings per call
-    pub fn getMaxEmbeddingsPerCall(self: *const Self) usize {
+    pub fn getMaxEmbeddingsPerCall(
+        self: *const Self,
+        callback: *const fn (?*anyopaque, ?u32) void,
+        ctx: ?*anyopaque,
+    ) void {
         _ = self;
-        return max_embeddings_per_call;
+        callback(ctx, @as(u32, max_embeddings_per_call));
+    }
+
+    /// Check if parallel calls are supported
+    pub fn getSupportsParallelCalls(
+        self: *const Self,
+        callback: *const fn (?*anyopaque, bool) void,
+        ctx: ?*anyopaque,
+    ) void {
+        _ = self;
+        callback(ctx, supports_parallel_calls);
     }
 
     /// Generate embeddings
     pub fn doEmbed(
-        self: *Self,
-        values: []const []const u8,
+        self: *const Self,
+        call_options: embedding.EmbeddingModelCallOptions,
         result_allocator: std.mem.Allocator,
-        callback: *const fn (?embedding.EmbeddingModelV3.EmbedResult, ?anyerror, ?*anyopaque) void,
+        callback: *const fn (?*anyopaque, embedding.EmbeddingModelV3.EmbedResult) void,
         callback_context: ?*anyopaque,
     ) void {
+        const values = call_options.values;
         // Use arena for request processing
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
@@ -62,7 +77,7 @@ pub const MistralEmbeddingModel = struct {
 
         // Check max embeddings
         if (values.len > max_embeddings_per_call) {
-            callback(null, error.TooManyEmbeddingValues, callback_context);
+            callback(callback_context, .{ .failure = error.TooManyEmbeddingValues, callback_context);
             return;
         }
 
@@ -71,30 +86,30 @@ pub const MistralEmbeddingModel = struct {
             request_allocator,
             self.config.base_url,
         ) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
         // Build request body
         var body = std.json.ObjectMap.init(request_allocator);
         body.put("model", .{ .string = self.model_id }) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
         var input = std.json.Array.init(request_allocator);
         for (values) |value| {
             input.append(.{ .string = value }) catch |err| {
-                callback(null, err, callback_context);
+                callback(callback_context, .{ .failure = err });
                 return;
             };
         }
         body.put("input", .{ .array = input }) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
         body.put("encoding_format", .{ .string = "float" }) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
@@ -102,7 +117,7 @@ pub const MistralEmbeddingModel = struct {
 
         // For now, return placeholder result
         const embeddings = result_allocator.alloc([]f32, values.len) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
@@ -111,60 +126,33 @@ pub const MistralEmbeddingModel = struct {
         for (embeddings, 0..) |*emb, i| {
             _ = i;
             emb.* = result_allocator.alloc(f32, dimensions) catch |err| {
-                callback(null, err, callback_context);
+                callback(callback_context, .{ .failure = err });
                 return;
             };
             @memset(emb.*, 0.0);
         }
 
-        const result = embedding.EmbeddingModelV3.EmbedResult{
-            .embeddings = embeddings,
+        // Convert embeddings to proper format
+        var embed_list = std.ArrayList(embedding.EmbeddingModelV3Embedding).init(result_allocator);
+        for (embeddings) |emb| {
+            embed_list.append(.{ .embedding = .{ .float = emb } }) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
+        }
+
+        const result = embedding.EmbeddingModelV3.EmbedSuccess{
+            .embeddings = embed_list.toOwnedSlice() catch &[_]embedding.EmbeddingModelV3Embedding{},
             .usage = null,
             .warnings = &[_]shared.SharedV3Warning{},
         };
 
-        callback(result, null, callback_context);
+        callback(callback_context, .{ .success = result });
     }
 
     /// Convert to EmbeddingModelV3 interface
     pub fn asEmbeddingModel(self: *Self) embedding.EmbeddingModelV3 {
-        return .{
-            .vtable = &vtable,
-            .impl = self,
-        };
-    }
-
-    const vtable = embedding.EmbeddingModelV3.VTable{
-        .doEmbed = doEmbedVtable,
-        .getModelId = getModelIdVtable,
-        .getProvider = getProviderVtable,
-        .getMaxEmbeddingsPerCall = getMaxEmbeddingsPerCallVtable,
-    };
-
-    fn doEmbedVtable(
-        impl: *anyopaque,
-        values: []const []const u8,
-        result_allocator: std.mem.Allocator,
-        callback: *const fn (?embedding.EmbeddingModelV3.EmbedResult, ?anyerror, ?*anyopaque) void,
-        callback_context: ?*anyopaque,
-    ) void {
-        const self: *Self = @ptrCast(@alignCast(impl));
-        self.doEmbed(values, result_allocator, callback, callback_context);
-    }
-
-    fn getModelIdVtable(impl: *anyopaque) []const u8 {
-        const self: *Self = @ptrCast(@alignCast(impl));
-        return self.getModelId();
-    }
-
-    fn getProviderVtable(impl: *anyopaque) []const u8 {
-        const self: *Self = @ptrCast(@alignCast(impl));
-        return self.getProvider();
-    }
-
-    fn getMaxEmbeddingsPerCallVtable(impl: *anyopaque) usize {
-        const self: *Self = @ptrCast(@alignCast(impl));
-        return self.getMaxEmbeddingsPerCall();
+        return embedding.asEmbeddingModel(Self, self);
     }
 };
 
