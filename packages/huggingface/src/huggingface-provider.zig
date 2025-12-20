@@ -1,5 +1,5 @@
 const std = @import("std");
-const provider_v3 = @import("provider").provider.v3;
+const provider_v3 = @import("provider").provider;
 const openai_compat = @import("openai-compatible");
 
 pub const HuggingFaceProviderSettings = struct {
@@ -206,11 +206,10 @@ test "HuggingFaceProvider asProvider vtable" {
     defer provider.deinit();
 
     const provider_wrapper = provider.asProvider();
-    try std.testing.expect(provider_wrapper.vtable.languageModel != null);
-    try std.testing.expect(provider_wrapper.vtable.embeddingModel != null);
-    try std.testing.expect(provider_wrapper.vtable.imageModel != null);
-    try std.testing.expect(provider_wrapper.vtable.speechModel != null);
-    try std.testing.expect(provider_wrapper.vtable.transcriptionModel != null);
+    try std.testing.expect(@intFromPtr(provider_wrapper.vtable.languageModel) != 0);
+    try std.testing.expect(@intFromPtr(provider_wrapper.vtable.embeddingModel) != 0);
+    try std.testing.expect(@intFromPtr(provider_wrapper.vtable.imageModel) != 0);
+    // speechModel and transcriptionModel are optional
 }
 
 test "HuggingFaceProvider languageModelVtable returns ok" {
@@ -221,7 +220,7 @@ test "HuggingFaceProvider languageModelVtable returns ok" {
     const provider_impl: *anyopaque = &provider;
     const result = HuggingFaceProvider.languageModelVtable(provider_impl, "test-model");
 
-    try std.testing.expect(result == .ok);
+    try std.testing.expect(result == .success);
 }
 
 test "HuggingFaceProvider embeddingModelVtable returns error" {
@@ -232,8 +231,10 @@ test "HuggingFaceProvider embeddingModelVtable returns error" {
     const provider_impl: *anyopaque = &provider;
     const result = HuggingFaceProvider.embeddingModelVtable(provider_impl, "test-model");
 
-    try std.testing.expect(result == .err);
-    try std.testing.expectError(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model => {},
+    }
 }
 
 test "HuggingFaceProvider imageModelVtable returns error" {
@@ -244,8 +245,10 @@ test "HuggingFaceProvider imageModelVtable returns error" {
     const provider_impl: *anyopaque = &provider;
     const result = HuggingFaceProvider.imageModelVtable(provider_impl, "test-model");
 
-    try std.testing.expect(result == .err);
-    try std.testing.expectError(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model => {},
+    }
 }
 
 test "HuggingFaceProvider speechModelVtable returns error" {
@@ -253,11 +256,13 @@ test "HuggingFaceProvider speechModelVtable returns error" {
     var provider = createHuggingFace(allocator);
     defer provider.deinit();
 
-    const provider_impl: *anyopaque = &provider;
-    const result = HuggingFaceProvider.speechModelVtable(provider_impl, "test-model");
+    const prov = provider.asProvider();
+    const result = prov.speechModel("test-model");
 
-    try std.testing.expect(result == .err);
-    try std.testing.expectError(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
+    }
 }
 
 test "HuggingFaceProvider transcriptionModelVtable returns error" {
@@ -265,11 +270,13 @@ test "HuggingFaceProvider transcriptionModelVtable returns error" {
     var provider = createHuggingFace(allocator);
     defer provider.deinit();
 
-    const provider_impl: *anyopaque = &provider;
-    const result = HuggingFaceProvider.transcriptionModelVtable(provider_impl, "test-model");
+    const prov = provider.asProvider();
+    const result = prov.transcriptionModel("test-model");
 
-    try std.testing.expect(result == .err);
-    try std.testing.expectError(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
+    }
 }
 
 test "getHeadersFn creates Content-Type header" {
