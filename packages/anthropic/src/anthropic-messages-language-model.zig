@@ -82,24 +82,15 @@ pub const AnthropicMessagesLanguageModel = struct {
 
         // Check for unsupported features
         if (call_options.frequency_penalty != null) {
-            try all_warnings.append(.{
-                .type = .unsupported,
-                .feature = "frequencyPenalty",
-            });
+            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("frequencyPenalty", null));
         }
 
         if (call_options.presence_penalty != null) {
-            try all_warnings.append(.{
-                .type = .unsupported,
-                .feature = "presencePenalty",
-            });
+            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("presencePenalty", null));
         }
 
         if (call_options.seed != null) {
-            try all_warnings.append(.{
-                .type = .unsupported,
-                .feature = "seed",
-            });
+            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("seed", null));
         }
 
         // Clamp temperature
@@ -107,18 +98,10 @@ pub const AnthropicMessagesLanguageModel = struct {
         if (temperature) |t| {
             if (t > 1.0) {
                 temperature = 1.0;
-                try all_warnings.append(.{
-                    .type = .unsupported,
-                    .feature = "temperature",
-                    .details = "Temperature exceeds anthropic maximum of 1.0, clamped to 1.0",
-                });
+                try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("temperature", "Temperature exceeds anthropic maximum of 1.0, clamped to 1.0"));
             } else if (t < 0.0) {
                 temperature = 0.0;
-                try all_warnings.append(.{
-                    .type = .unsupported,
-                    .feature = "temperature",
-                    .details = "Temperature below anthropic minimum of 0, clamped to 0",
-                });
+                try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("temperature", "Temperature below anthropic minimum of 0, clamped to 0"));
             }
         }
 
@@ -447,6 +430,7 @@ pub const AnthropicMessagesLanguageModel = struct {
     const vtable = lm.LanguageModelV3.VTable{
         .getProvider = getProviderVtable,
         .getModelId = getModelIdVtable,
+        .getSupportedUrls = getSupportedUrlsVtable,
         .doGenerate = doGenerateVtable,
         .doStream = doStreamVtable,
     };
@@ -461,11 +445,24 @@ pub const AnthropicMessagesLanguageModel = struct {
         return self.getModelId();
     }
 
+    fn getSupportedUrlsVtable(
+        impl: *anyopaque,
+        allocator: std.mem.Allocator,
+        callback: *const fn (?*anyopaque, lm.LanguageModelV3.SupportedUrlsResult) void,
+        context: ?*anyopaque,
+    ) void {
+        _ = impl;
+        _ = allocator;
+        // Anthropic doesn't support URL-based file inputs
+        var empty_map = std.StringHashMap([]const []const u8).init(allocator);
+        callback(context, .{ .success = empty_map });
+    }
+
     fn doGenerateVtable(
         impl: *anyopaque,
         options: lm.LanguageModelV3CallOptions,
         allocator: std.mem.Allocator,
-        callback: *const fn (?*anyopaque, GenerateResult) void,
+        callback: *const fn (?*anyopaque, lm.LanguageModelV3.GenerateResult) void,
         context: ?*anyopaque,
     ) void {
         const self: *Self = @ptrCast(@alignCast(impl));
@@ -476,7 +473,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         impl: *anyopaque,
         options: lm.LanguageModelV3CallOptions,
         allocator: std.mem.Allocator,
-        callbacks: provider_utils.StreamCallbacks(lm.LanguageModelV3StreamPart),
+        callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) void {
         const self: *Self = @ptrCast(@alignCast(impl));
         self.doStream(options, allocator, callbacks);
@@ -641,18 +638,18 @@ const StreamState = struct {
                         self.callbacks.on_part(self.callbacks.ctx, .{ .reasoning_end = .{ .id = id } });
                     },
                     .tool_use => {
-                        self.callbacks.on_part(.{
+                        self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_input_end = .{ .id = block.tool_call_id orelse "" },
-                        }, self.callbacks.context);
+                        });
 
                         // Emit tool call
-                        self.callbacks.on_part(.{
+                        self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_call = .{
                                 .tool_call_id = block.tool_call_id orelse "",
                                 .tool_name = block.tool_name orelse "",
                                 .input = json_value.JsonValue.parse(self.result_allocator, block.input.items) catch .{ .object = json_value.JsonObject.init(self.result_allocator) },
                             },
-                        }, self.callbacks.context);
+                        });
                     },
                 }
 
@@ -679,26 +676,26 @@ const StreamState = struct {
         } else if (std.mem.eql(u8, chunk_type, "error")) {
             if (chunk.@"error") |err| {
                 self.finish_reason = .@"error";
-                self.callbacks.on_part(.{
+                self.callbacks.on_part(self.callbacks.ctx, .{
                     .@"error" = .{
                         .error_value = .{ .message = err.message },
                     },
-                }, self.callbacks.context);
+                });
             }
         }
     }
 
     fn finish(self: *StreamState) void {
         // Emit finish
-        self.callbacks.on_part(.{
+        self.callbacks.on_part(self.callbacks.ctx, .{
             .finish = .{
                 .finish_reason = self.finish_reason,
                 .usage = self.usage orelse lm.LanguageModelV3Usage.init(),
             },
-        }, self.callbacks.context);
+        });
 
         // Call complete callback
-        self.callbacks.on_complete(self.callbacks.context);
+        self.callbacks.on_complete(self.callbacks.ctx, null);
     }
 };
 
