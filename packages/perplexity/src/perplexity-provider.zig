@@ -235,6 +235,7 @@ test "PerplexityProvider asProvider vtable" {
         .failure => |err| {
             return err;
         },
+        .no_such_model => {},
     }
 }
 
@@ -252,6 +253,7 @@ test "PerplexityProvider vtable unsupported models return errors" {
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
         },
+        .no_such_model => {},
     }
 
     // Test image model returns error
@@ -261,24 +263,29 @@ test "PerplexityProvider vtable unsupported models return errors" {
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
         },
+        .no_such_model => {},
     }
 
     // Test speech model returns error
-    const speech_result = as_provider.vtable.speechModel(as_provider.impl, "test-model");
+    const speech_result = as_provider.speechModel("test-model");
     switch (speech_result) {
         .success => return error.TestExpectedError,
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
         },
+        .no_such_model => {},
+        .not_supported => {},
     }
 
     // Test transcription model returns error
-    const transcription_result = as_provider.vtable.transcriptionModel(as_provider.impl, "test-model");
+    const transcription_result = as_provider.transcriptionModel("test-model");
     switch (transcription_result) {
         .success => return error.TestExpectedError,
         .failure => |err| {
             try std.testing.expectEqual(error.NoSuchModel, err);
         },
+        .no_such_model => {},
+        .not_supported => {},
     }
 }
 
