@@ -81,7 +81,6 @@ pub const CohereChatLanguageModel = struct {
         // These are used in actual implementation for HTTP request
         // but for now we just use placeholder result
         _ = url;
-        _ = headers;
         _ = body_buffer.items;
 
         // For now, return placeholder result

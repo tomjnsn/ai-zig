@@ -13,8 +13,9 @@ pub fn parseCohereError(allocator: std.mem.Allocator, json_str: []const u8) !Coh
 
     const obj = parsed.value.object;
 
+    const message = if (obj.get("message")) |v| v.string else "Unknown error";
     return CohereErrorData{
-        .message = if (obj.get("message")) |v| v.string else "Unknown error",
+        .message = try allocator.dupe(u8, message),
     };
 }
 
@@ -29,5 +30,6 @@ test "parseCohereError" {
         \\{"message":"Invalid API key"}
     ;
     const err = try parseCohereError(allocator, json);
+    defer allocator.free(err.message);
     try std.testing.expectEqualStrings("Invalid API key", err.message);
 }
