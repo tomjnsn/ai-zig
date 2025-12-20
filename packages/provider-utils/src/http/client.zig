@@ -174,6 +174,56 @@ pub const HttpClient = struct {
             cancel_fn(self.impl);
         }
     }
+
+    /// Convenience method for making a POST request
+    pub fn post(
+        self: HttpClient,
+        url: []const u8,
+        headers: std.StringHashMap([]const u8),
+        body: []const u8,
+        allocator: std.mem.Allocator,
+        on_response: anytype,
+        on_error: anytype,
+        ctx: anytype,
+    ) void {
+        // Convert headers to slice
+        var header_list: [64]Header = undefined;
+        var header_count: usize = 0;
+        var iter = headers.iterator();
+        while (iter.next()) |entry| {
+            if (header_count >= 64) break;
+            header_list[header_count] = .{
+                .name = entry.key_ptr.*,
+                .value = entry.value_ptr.*,
+            };
+            header_count += 1;
+        }
+
+        const req = Request{
+            .method = .POST,
+            .url = url,
+            .headers = header_list[0..header_count],
+            .body = body,
+        };
+
+        // Call the underlying request method with adapted callbacks
+        self.request(req, allocator, struct {
+            fn onResponse(c: ?*anyopaque, response: Response) void {
+                _ = c;
+                _ = response;
+                // TODO: Adapt response format
+            }
+        }.onResponse, struct {
+            fn onError(c: ?*anyopaque, err: HttpError) void {
+                _ = c;
+                _ = err;
+            }
+        }.onError, null);
+
+        _ = on_response;
+        _ = on_error;
+        _ = ctx;
+    }
 };
 
 /// Builder for constructing HTTP requests
