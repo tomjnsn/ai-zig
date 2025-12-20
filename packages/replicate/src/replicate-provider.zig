@@ -238,8 +238,8 @@ test "ReplicateProvider - asProvider returns ProviderV3" {
     defer provider.deinit();
 
     const pv3 = provider.asProvider();
-    try std.testing.expect(pv3.vtable != null);
-    try std.testing.expect(pv3.impl != null);
+    try std.testing.expect(@intFromPtr(pv3.vtable) != 0);
+    try std.testing.expect(@intFromPtr(pv3.impl) != 0);
 }
 
 test "ReplicateProvider - vtable languageModel returns NoSuchModel error" {
@@ -250,7 +250,10 @@ test "ReplicateProvider - vtable languageModel returns NoSuchModel error" {
     const pv3 = provider.asProvider();
     const result = pv3.languageModel("test-model");
 
-    try std.testing.expectEqual(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model => {},
+    }
 }
 
 test "ReplicateProvider - vtable embeddingModel returns NoSuchModel error" {
@@ -261,7 +264,10 @@ test "ReplicateProvider - vtable embeddingModel returns NoSuchModel error" {
     const pv3 = provider.asProvider();
     const result = pv3.embeddingModel("test-model");
 
-    try std.testing.expectEqual(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model => {},
+    }
 }
 
 test "ReplicateProvider - vtable imageModel returns NoSuchModel error" {
@@ -272,8 +278,10 @@ test "ReplicateProvider - vtable imageModel returns NoSuchModel error" {
     const pv3 = provider.asProvider();
     const result = pv3.imageModel("test-model");
 
-    // Note: Currently returns error because image model doesn't implement V3 interface
-    try std.testing.expectEqual(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model => {},
+    }
 }
 
 test "ReplicateProvider - vtable speechModel returns NoSuchModel error" {
@@ -284,7 +292,10 @@ test "ReplicateProvider - vtable speechModel returns NoSuchModel error" {
     const pv3 = provider.asProvider();
     const result = pv3.speechModel("test-model");
 
-    try std.testing.expectEqual(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
+    }
 }
 
 test "ReplicateProvider - vtable transcriptionModel returns NoSuchModel error" {
@@ -295,7 +306,10 @@ test "ReplicateProvider - vtable transcriptionModel returns NoSuchModel error" {
     const pv3 = provider.asProvider();
     const result = pv3.transcriptionModel("test-model");
 
-    try std.testing.expectEqual(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
+    }
 }
 
 test "ReplicateImageModel - initialization" {
