@@ -404,9 +404,10 @@ test "getHeadersFn creates headers with content type" {
 
     var headers = getHeadersFn(&config);
     defer {
-        var iter = headers.iterator();
-        while (iter.next()) |entry| {
-            std.heap.page_allocator.free(entry.value_ptr.*);
+        // Only free the Authorization header if present (it's heap-allocated)
+        // Content-Type value is a string literal and shouldn't be freed
+        if (headers.get("Authorization")) |auth_value| {
+            std.heap.page_allocator.free(auth_value);
         }
         headers.deinit();
     }
