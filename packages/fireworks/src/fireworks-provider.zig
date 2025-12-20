@@ -316,7 +316,10 @@ test "FireworksProvider asProvider vtable languageModel" {
         "accounts/fireworks/models/llama-v3p1-8b-instruct",
     );
 
-    try std.testing.expect(result == .ok);
+    switch (result) {
+        .success => {},
+        .failure, .no_such_model => try std.testing.expect(false),
+    }
 }
 
 test "FireworksProvider asProvider vtable embeddingModel" {
@@ -330,7 +333,10 @@ test "FireworksProvider asProvider vtable embeddingModel" {
         "nomic-ai/nomic-embed-text-v1.5",
     );
 
-    try std.testing.expect(result == .ok);
+    switch (result) {
+        .success => {},
+        .failure, .no_such_model => try std.testing.expect(false),
+    }
 }
 
 test "FireworksProvider asProvider vtable imageModel returns error" {
@@ -341,8 +347,10 @@ test "FireworksProvider asProvider vtable imageModel returns error" {
     const pv3 = provider.asProvider();
     const result = pv3.vtable.imageModel(pv3.impl, "any-model-id");
 
-    try std.testing.expect(result == .err);
-    try std.testing.expectError(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model => {},
+    }
 }
 
 test "FireworksProvider asProvider vtable speechModel returns error" {
@@ -351,10 +359,12 @@ test "FireworksProvider asProvider vtable speechModel returns error" {
     defer provider.deinit();
 
     const pv3 = provider.asProvider();
-    const result = pv3.vtable.speechModel(pv3.impl, "any-model-id");
+    const result = pv3.speechModel("any-model-id");
 
-    try std.testing.expect(result == .err);
-    try std.testing.expectError(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
+    }
 }
 
 test "FireworksProvider asProvider vtable transcriptionModel returns error" {
@@ -363,10 +373,12 @@ test "FireworksProvider asProvider vtable transcriptionModel returns error" {
     defer provider.deinit();
 
     const pv3 = provider.asProvider();
-    const result = pv3.vtable.transcriptionModel(pv3.impl, "any-model-id");
+    const result = pv3.transcriptionModel("any-model-id");
 
-    try std.testing.expect(result == .err);
-    try std.testing.expectError(error.NoSuchModel, result.err);
+    switch (result) {
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
+    }
 }
 
 // ============================================================================
@@ -375,7 +387,7 @@ test "FireworksProvider asProvider vtable transcriptionModel returns error" {
 
 test "createFireworks returns initialized provider" {
     const allocator = std.testing.allocator;
-    const provider = createFireworks(allocator);
+    var provider = createFireworks(allocator);
     defer provider.deinit();
 
     try std.testing.expectEqualStrings("fireworks", provider.getProvider());
@@ -384,7 +396,7 @@ test "createFireworks returns initialized provider" {
 
 test "createFireworksWithSettings accepts empty settings" {
     const allocator = std.testing.allocator;
-    const provider = createFireworksWithSettings(allocator, .{});
+    var provider = createFireworksWithSettings(allocator, .{});
     defer provider.deinit();
 
     try std.testing.expectEqualStrings("fireworks", provider.getProvider());
@@ -396,7 +408,7 @@ test "createFireworksWithSettings with all settings" {
     const custom_base_url = "https://test.fireworks.ai/v1";
     const custom_api_key = "sk-test-123";
 
-    const provider = createFireworksWithSettings(allocator, .{
+    var provider = createFireworksWithSettings(allocator, .{
         .base_url = custom_base_url,
         .api_key = custom_api_key,
     });
@@ -416,7 +428,7 @@ test "getHeadersFn returns valid headers" {
         .base_url = "https://api.fireworks.ai/inference/v1",
     };
 
-    const headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config);
     defer headers.deinit();
 
     const content_type = headers.get("Content-Type");
@@ -432,7 +444,7 @@ test "getHeadersFn includes auth header when API key available" {
         .base_url = "https://api.fireworks.ai/inference/v1",
     };
 
-    const headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config);
     defer headers.deinit();
 
     // At minimum, Content-Type should always be present
