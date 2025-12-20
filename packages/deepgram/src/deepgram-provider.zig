@@ -689,7 +689,8 @@ test "DeepgramSpeechModel buildRequestBody with text only" {
     );
 
     const options = SpeechOptions{};
-    const body = try model.buildRequestBody("Hello, world!", options);
+    var body = try model.buildRequestBody("Hello, world!", options);
+    defer body.object.deinit();
 
     try std.testing.expectEqual(std.json.Value{ .string = "Hello, world!" }, body.object.get("text").?);
     try std.testing.expect(body.object.get("encoding") == null);
@@ -710,7 +711,8 @@ test "DeepgramSpeechModel buildRequestBody with encoding options" {
         .encoding = "mp3",
         .container = "mp3",
     };
-    const body = try model.buildRequestBody("Test text", options);
+    var body = try model.buildRequestBody("Test text", options);
+    defer body.object.deinit();
 
     try std.testing.expectEqual(std.json.Value{ .string = "Test text" }, body.object.get("text").?);
     try std.testing.expectEqualStrings("mp3", body.object.get("encoding").?.string);
@@ -733,7 +735,8 @@ test "DeepgramSpeechModel buildRequestBody with sample and bit rate" {
         .sample_rate = 48000,
         .bit_rate = 128000,
     };
-    const body = try model.buildRequestBody("Quality test", options);
+    var body = try model.buildRequestBody("Quality test", options);
+    defer body.object.deinit();
 
     try std.testing.expectEqual(@as(i64, 48000), body.object.get("sample_rate").?.integer);
     try std.testing.expectEqual(@as(i64, 128000), body.object.get("bit_rate").?.integer);
@@ -755,7 +758,8 @@ test "DeepgramSpeechModel buildRequestBody with all options" {
         .sample_rate = 24000,
         .bit_rate = 64000,
     };
-    const body = try model.buildRequestBody("Complete test", options);
+    var body = try model.buildRequestBody("Complete test", options);
+    defer body.object.deinit();
 
     try std.testing.expectEqual(std.json.Value{ .string = "Complete test" }, body.object.get("text").?);
     try std.testing.expectEqualStrings("opus", body.object.get("encoding").?.string);
@@ -1006,7 +1010,8 @@ test "DeepgramSpeechModel empty text in buildRequestBody" {
     );
 
     const options = SpeechOptions{};
-    const body = try model.buildRequestBody("", options);
+    var body = try model.buildRequestBody("", options);
+    defer body.object.deinit();
 
     try std.testing.expectEqual(std.json.Value{ .string = "" }, body.object.get("text").?);
 }
@@ -1046,7 +1051,8 @@ test "DeepgramSpeechModel buildRequestBody edge case: zero values" {
         .sample_rate = 0,
         .bit_rate = 0,
     };
-    const body = try model.buildRequestBody("test", options);
+    var body = try model.buildRequestBody("test", options);
+    defer body.object.deinit();
 
     try std.testing.expectEqual(@as(i64, 0), body.object.get("sample_rate").?.integer);
     try std.testing.expectEqual(@as(i64, 0), body.object.get("bit_rate").?.integer);
