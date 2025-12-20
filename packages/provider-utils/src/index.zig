@@ -44,20 +44,21 @@ pub const extract_response_headers = @import("extract-response-headers.zig");
 
 pub const postToApi = post_to_api.postToApi;
 pub const postJsonToApi = post_to_api.postJsonToApi;
-pub const ApiCallConfig = post_to_api.ApiCallConfig;
-pub const ApiCallCallbacks = post_to_api.ApiCallCallbacks;
+pub const postJsonToApiStreaming = post_to_api.postJsonToApiStreaming;
+pub const PostJsonToApiOptions = post_to_api.PostJsonToApiOptions;
+pub const PostToApiOptions = post_to_api.PostToApiOptions;
+pub const ApiResponse = post_to_api.ApiResponse;
+pub const ApiError = post_to_api.ApiError;
+pub const ApiCallbacks = post_to_api.ApiCallbacks;
+pub const StreamingApiCallbacks = post_to_api.StreamingApiCallbacks;
 
 pub const ResponseHandler = response_handler.ResponseHandler;
 pub const createJsonResponseHandler = response_handler.createJsonResponseHandler;
-pub const createTextResponseHandler = response_handler.createTextResponseHandler;
 pub const createBinaryResponseHandler = response_handler.createBinaryResponseHandler;
-pub const createStreamingResponseHandler = response_handler.createStreamingResponseHandler;
 
 pub const combineHeaders = combine_headers.combineHeaders;
-pub const HeaderPrecedence = combine_headers.HeaderPrecedence;
 
 pub const extractResponseHeaders = extract_response_headers.extractResponseHeaders;
-pub const HeaderFilter = extract_response_headers.HeaderFilter;
 
 // JSON utilities
 pub const parse_json = @import("parse-json.zig");

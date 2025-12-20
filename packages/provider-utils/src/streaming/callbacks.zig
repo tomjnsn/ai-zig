@@ -154,14 +154,14 @@ pub const LanguageModelStreamCallbacks = struct {
 
 /// Accumulator for building up streaming content
 pub const StreamAccumulator = struct {
-    text: std.ArrayList(u8),
-    tool_calls: std.ArrayList(AccumulatedToolCall),
+    text: std.array_list.Managed(u8),
+    tool_calls: std.array_list.Managed(AccumulatedToolCall),
     allocator: std.mem.Allocator,
 
     pub const AccumulatedToolCall = struct {
         id: []const u8,
         name: []const u8,
-        input: std.ArrayList(u8),
+        input: std.array_list.Managed(u8),
 
         pub fn deinit(self: *AccumulatedToolCall, allocator: std.mem.Allocator) void {
             allocator.free(self.id);
@@ -342,7 +342,7 @@ test "StreamCallbacks emit fail complete" {
     var complete_seen = false;
 
     const TestContext = struct {
-        items: *std.ArrayList(i32),
+        items: *std.array_list.Managed(i32),
         error_seen: *?anyerror,
         complete_seen: *bool,
     };

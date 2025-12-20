@@ -5,8 +5,8 @@ const parse_json = @import("parse-json.zig");
 /// Server-Sent Events (SSE) parser for JSON event streams.
 /// Parses text/event-stream format and extracts JSON data payloads.
 pub const EventSourceParser = struct {
-    buffer: std.ArrayList(u8),
-    data_buffer: std.ArrayList(u8),
+    buffer: std.array_list.Managed(u8),
+    data_buffer: std.array_list.Managed(u8),
     event_type: ?[]const u8,
     allocator: std.mem.Allocator,
 
@@ -308,7 +308,7 @@ test "EventSourceParser basic" {
     }
 
     const TestContext = struct {
-        events: *std.ArrayList([]const u8),
+        events: *std.array_list.Managed([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
@@ -362,7 +362,7 @@ test "EventSourceParser multiple events" {
     }
 
     const TestContext = struct {
-        events: *std.ArrayList([]const u8),
+        events: *std.array_list.Managed([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
@@ -410,7 +410,7 @@ test "EventSourceParser multiline data" {
     }
 
     const TestContext = struct {
-        events: *std.ArrayList([]const u8),
+        events: *std.array_list.Managed([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
@@ -454,7 +454,7 @@ test "EventSourceParser with event types" {
     }
 
     const TestContext = struct {
-        event_types: *std.ArrayList([]const u8),
+        event_types: *std.array_list.Managed([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
@@ -529,7 +529,7 @@ test "EventSourceParser different line endings" {
     }
 
     const TestContext = struct {
-        events: *std.ArrayList([]const u8),
+        events: *std.array_list.Managed([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
@@ -568,7 +568,7 @@ test "EventSourceParser chunked input" {
     }
 
     const TestContext = struct {
-        events: *std.ArrayList([]const u8),
+        events: *std.array_list.Managed([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
@@ -639,7 +639,7 @@ test "EventSourceParser empty data field" {
     }
 
     const TestContext = struct {
-        events: *std.ArrayList([]const u8),
+        events: *std.array_list.Managed([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
@@ -677,7 +677,7 @@ test "SimpleJsonEventStreamParser basic" {
     var complete_called = false;
 
     const TestContext = struct {
-        events: *std.ArrayList(json_value.JsonValue),
+        events: *std.array_list.Managed(json_value.JsonValue),
         error_count: *usize,
         complete_called: *bool,
         allocator: std.mem.Allocator,

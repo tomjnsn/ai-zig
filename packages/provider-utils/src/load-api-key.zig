@@ -219,7 +219,8 @@ test "loadApiKey rejects empty string" {
 
 test "loadApiKey from environment variable" {
     // Set an environment variable for testing
-    try std.process.getEnvMap(std.testing.allocator);
+    var env_map = try std.process.getEnvMap(std.testing.allocator);
+    defer env_map.deinit();
 }
 
 test "loadApiKey missing from environment" {

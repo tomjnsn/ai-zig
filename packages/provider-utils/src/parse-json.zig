@@ -27,21 +27,20 @@ pub fn safeParseJson(
 
     // Parse using std.json
     const parsed = std.json.parseFromSlice(std.json.Value, allocator, text, .{}) catch |err| {
-        return .{ .failure = .{
-            .message = switch (err) {
-                error.UnexpectedCharacter => "Unexpected character in JSON",
-                error.InvalidNumber => "Invalid number in JSON",
-                error.Overflow => "Number overflow in JSON",
-                error.InvalidEnumTag => "Invalid enum tag",
-                error.DuplicateField => "Duplicate field in JSON object",
-                error.UnknownField => "Unknown field in JSON",
-                error.MissingField => "Missing required field in JSON",
-                error.LengthMismatch => "Array length mismatch",
-                error.SyntaxError => "JSON syntax error",
-                error.UnexpectedEndOfInput => "Unexpected end of JSON input",
-                else => "Failed to parse JSON",
-            },
-        } };
+        const message: []const u8 = switch (err) {
+            error.InvalidCharacter => "Unexpected character in JSON",
+            error.InvalidNumber => "Invalid number in JSON",
+            error.Overflow => "Number overflow in JSON",
+            error.InvalidEnumTag => "Invalid enum tag",
+            error.DuplicateField => "Duplicate field in JSON object",
+            error.UnknownField => "Unknown field in JSON",
+            error.MissingField => "Missing required field in JSON",
+            error.LengthMismatch => "Array length mismatch",
+            error.SyntaxError => "JSON syntax error",
+            error.UnexpectedEndOfInput => "Unexpected end of JSON input",
+            else => "Failed to parse JSON",
+        };
+        return .{ .failure = .{ .message = message } };
     };
 
     // Convert to our JsonValue type
@@ -110,7 +109,7 @@ pub const TypedParseResult = struct {
     }
 
     /// Get an array field from the parsed JSON object
-    pub fn getArray(self: TypedParseResult, key: []const u8) ?json_value.JsonArray {
+    pub fn getArray(self: TypedParseResult, key: []const u8) ?[]const json_value.JsonValue {
         if (self.value.get(key)) |v| {
             return v.asArray();
         }
@@ -290,7 +289,7 @@ test "safeParseJson array" {
                 v.deinit(allocator);
             }
             const arr = value.asArray().?;
-            try std.testing.expectEqual(@as(usize, 5), arr.items.len);
+            try std.testing.expectEqual(@as(usize, 5), arr.len);
         },
         .failure => unreachable,
     }

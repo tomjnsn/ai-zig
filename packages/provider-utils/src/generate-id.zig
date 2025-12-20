@@ -24,7 +24,7 @@ pub const IdGeneratorConfig = struct {
 /// ID Generator that produces random string IDs
 pub const IdGenerator = struct {
     config: IdGeneratorConfig,
-    random: std.Random,
+    prng: std.Random.DefaultPrng,
 
     const Self = @This();
 
@@ -39,7 +39,7 @@ pub const IdGenerator = struct {
 
         return .{
             .config = config,
-            .random = std.Random.DefaultPrng.init(seed).random(),
+            .prng = std.Random.DefaultPrng.init(seed),
         };
     }
 
@@ -71,7 +71,7 @@ pub const IdGenerator = struct {
         const alphabet_len = self.config.alphabet.len;
 
         for (result) |*char| {
-            const idx = self.random.uintLessThan(usize, alphabet_len);
+            const idx = self.prng.random().uintLessThan(usize, alphabet_len);
             char.* = self.config.alphabet[idx];
         }
 
