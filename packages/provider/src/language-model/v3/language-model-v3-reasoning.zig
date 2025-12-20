@@ -52,7 +52,7 @@ pub const LanguageModelV3Reasoning = struct {
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         allocator.free(self.text);
         if (self.provider_metadata) |*pm| {
-            pm.deinit(allocator);
+            pm.deinit();
         }
     }
 };

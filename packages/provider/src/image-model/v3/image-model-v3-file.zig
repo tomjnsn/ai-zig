@@ -121,13 +121,13 @@ pub const ImageModelV3File = union(enum) {
                     .binary => |d| allocator.free(d),
                 }
                 if (f.provider_options) |*po| {
-                    po.deinit(allocator);
+                    po.deinit();
                 }
             },
             .url => |*u| {
                 allocator.free(u.url);
                 if (u.provider_options) |*po| {
-                    po.deinit(allocator);
+                    po.deinit();
                 }
             },
         }

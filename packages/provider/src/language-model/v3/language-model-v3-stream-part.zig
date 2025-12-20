@@ -211,7 +211,7 @@ pub fn finish(usage: LanguageModelV3Usage, finish_reason: LanguageModelV3FinishR
 
 /// Create an error stream part
 pub fn streamError(err: anyerror, message: ?[]const u8) LanguageModelV3StreamPart {
-    return .{ .@"error" = .{ .failure = err, .message = message } };
+    return .{ .@"error" = .{ .err = err, .message = message } };
 }
 
 test "LanguageModelV3StreamPart text_delta" {

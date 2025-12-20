@@ -106,7 +106,7 @@ pub const LanguageModelV3File = struct {
         allocator.free(self.media_type);
         self.data.deinit(allocator);
         if (self.provider_metadata) |*pm| {
-            pm.deinit(allocator);
+            pm.deinit();
         }
     }
 };

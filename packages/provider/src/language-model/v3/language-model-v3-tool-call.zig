@@ -77,7 +77,7 @@ pub const LanguageModelV3ToolCall = struct {
         allocator.free(self.tool_name);
         allocator.free(self.input);
         if (self.provider_metadata) |*pm| {
-            pm.deinit(allocator);
+            pm.deinit();
         }
     }
 };

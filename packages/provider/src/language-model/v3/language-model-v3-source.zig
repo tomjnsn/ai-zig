@@ -149,7 +149,7 @@ pub const LanguageModelV3Source = struct {
         }
 
         if (self.provider_metadata) |*pm| {
-            pm.deinit(allocator);
+            pm.deinit();
         }
     }
 };

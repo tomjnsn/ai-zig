@@ -79,13 +79,13 @@ pub const LanguageModelV3ProviderTool = struct {
     pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
         allocator.free(self.name);
-        self.args.deinit(allocator);
+        self.args.deinit();
     }
 };
 
 test "LanguageModelV3ProviderTool basic" {
     var args = json_value.JsonObject.init(std.testing.allocator);
-    defer args.deinit(std.testing.allocator);
+    defer args.deinit();
 
     const tool = LanguageModelV3ProviderTool.init(
         "openai.code_interpreter",
@@ -107,7 +107,7 @@ test "LanguageModelV3ProviderTool isValidId" {
 
 test "LanguageModelV3ProviderTool getProviderId" {
     var args = json_value.JsonObject.init(std.testing.allocator);
-    defer args.deinit(std.testing.allocator);
+    defer args.deinit();
 
     const tool = LanguageModelV3ProviderTool.init(
         "openai.code_interpreter",

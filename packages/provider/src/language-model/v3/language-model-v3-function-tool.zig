@@ -102,12 +102,12 @@ pub const LanguageModelV3FunctionTool = struct {
         self.input_schema.deinit(allocator);
         if (self.input_examples) |examples| {
             for (examples) |*example| {
-                example.input.deinit(allocator);
+                example.input.deinit();
             }
             allocator.free(examples);
         }
         if (self.provider_options) |*po| {
-            po.deinit(allocator);
+            po.deinit();
         }
     }
 };

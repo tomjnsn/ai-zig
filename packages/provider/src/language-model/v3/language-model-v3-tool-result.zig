@@ -92,7 +92,7 @@ pub const LanguageModelV3ToolResult = struct {
         allocator.free(self.tool_name);
         self.result.deinit(allocator);
         if (self.provider_metadata) |*pm| {
-            pm.deinit(allocator);
+            pm.deinit();
         }
     }
 };
