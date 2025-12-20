@@ -360,3 +360,336 @@ test "GroqChatLanguageModel init" {
     try std.testing.expectEqualStrings("llama-3.3-70b-versatile", model.getModelId());
     try std.testing.expectEqualStrings("groq", model.getProvider());
 }
+
+test "GroqChatLanguageModel init with custom config" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(
+        allocator,
+        "custom-model",
+        .{
+            .provider = "groq.custom",
+            .base_url = "https://custom.groq.com",
+        },
+    );
+
+    try std.testing.expectEqualStrings("custom-model", model.getModelId());
+    try std.testing.expectEqualStrings("groq.custom", model.getProvider());
+}
+
+test "GroqChatLanguageModel getModelId and getProvider" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(
+        allocator,
+        "test-model-id",
+        .{},
+    );
+
+    try std.testing.expectEqualStrings("test-model-id", model.getModelId());
+    try std.testing.expectEqualStrings("groq", model.getProvider());
+}
+
+test "GroqChatLanguageModel asLanguageModel interface" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(
+        allocator,
+        "llama-3.3-70b-versatile",
+        .{},
+    );
+
+    const lang_model = model.asLanguageModel();
+    try std.testing.expect(lang_model.vtable.getModelId != null);
+    try std.testing.expect(lang_model.vtable.getProvider != null);
+    try std.testing.expect(lang_model.vtable.doGenerate != null);
+    try std.testing.expect(lang_model.vtable.doStream != null);
+}
+
+test "GroqChatLanguageModel multiple instances with different models" {
+    const allocator = std.testing.allocator;
+
+    var model1 = GroqChatLanguageModel.init(allocator, "llama-3.3-70b-versatile", .{});
+    var model2 = GroqChatLanguageModel.init(allocator, "llama-3.1-8b-instant", .{});
+    var model3 = GroqChatLanguageModel.init(allocator, "gemma2-9b-it", .{});
+
+    try std.testing.expectEqualStrings("llama-3.3-70b-versatile", model1.getModelId());
+    try std.testing.expectEqualStrings("llama-3.1-8b-instant", model2.getModelId());
+    try std.testing.expectEqualStrings("gemma2-9b-it", model3.getModelId());
+
+    try std.testing.expectEqualStrings("groq", model1.getProvider());
+    try std.testing.expectEqualStrings("groq", model2.getProvider());
+    try std.testing.expectEqualStrings("groq", model3.getProvider());
+}
+
+test "GroqChatLanguageModel buildRequestBody with simple prompt" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(allocator, "test-model", .{});
+
+    const prompt = [_]lm.LanguageModelV3Prompt{
+        .{
+            .role = .user,
+            .content = .{
+                .user = &[_]lm.LanguageModelV3Content{
+                    .{ .text = .{ .text = "Hello" } },
+                },
+            },
+        },
+    };
+
+    const call_options = lm.LanguageModelV3CallOptions{
+        .prompt = &prompt,
+        .max_output_tokens = null,
+        .temperature = null,
+        .top_p = null,
+        .top_k = null,
+        .seed = null,
+        .max_retries = null,
+        .abort_signal = null,
+        .headers = null,
+        .stop_sequences = null,
+        .tools = null,
+    };
+
+    const request_body = try model.buildRequestBody(allocator, call_options);
+    defer {
+        if (request_body == .object) {
+            request_body.object.deinit();
+        }
+    }
+
+    try std.testing.expect(request_body == .object);
+    const model_val = request_body.object.get("model");
+    try std.testing.expect(model_val != null);
+    try std.testing.expectEqualStrings("test-model", model_val.?.string);
+}
+
+test "GroqChatLanguageModel buildRequestBody with max_tokens" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(allocator, "test-model", .{});
+
+    const prompt = [_]lm.LanguageModelV3Prompt{
+        .{
+            .role = .user,
+            .content = .{
+                .user = &[_]lm.LanguageModelV3Content{
+                    .{ .text = .{ .text = "Hello" } },
+                },
+            },
+        },
+    };
+
+    const call_options = lm.LanguageModelV3CallOptions{
+        .prompt = &prompt,
+        .max_output_tokens = 100,
+        .temperature = null,
+        .top_p = null,
+        .top_k = null,
+        .seed = null,
+        .max_retries = null,
+        .abort_signal = null,
+        .headers = null,
+        .stop_sequences = null,
+        .tools = null,
+    };
+
+    const request_body = try model.buildRequestBody(allocator, call_options);
+    defer {
+        if (request_body == .object) {
+            request_body.object.deinit();
+        }
+    }
+
+    try std.testing.expect(request_body == .object);
+    const max_tokens = request_body.object.get("max_tokens");
+    try std.testing.expect(max_tokens != null);
+    try std.testing.expectEqual(@as(i64, 100), max_tokens.?.integer);
+}
+
+test "GroqChatLanguageModel buildRequestBody with temperature and top_p" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(allocator, "test-model", .{});
+
+    const prompt = [_]lm.LanguageModelV3Prompt{
+        .{
+            .role = .user,
+            .content = .{
+                .user = &[_]lm.LanguageModelV3Content{
+                    .{ .text = .{ .text = "Hello" } },
+                },
+            },
+        },
+    };
+
+    const call_options = lm.LanguageModelV3CallOptions{
+        .prompt = &prompt,
+        .max_output_tokens = null,
+        .temperature = 0.7,
+        .top_p = 0.9,
+        .top_k = null,
+        .seed = null,
+        .max_retries = null,
+        .abort_signal = null,
+        .headers = null,
+        .stop_sequences = null,
+        .tools = null,
+    };
+
+    const request_body = try model.buildRequestBody(allocator, call_options);
+    defer {
+        if (request_body == .object) {
+            request_body.object.deinit();
+        }
+    }
+
+    try std.testing.expect(request_body == .object);
+
+    const temperature = request_body.object.get("temperature");
+    try std.testing.expect(temperature != null);
+    try std.testing.expectEqual(@as(f64, 0.7), temperature.?.float);
+
+    const top_p = request_body.object.get("top_p");
+    try std.testing.expect(top_p != null);
+    try std.testing.expectEqual(@as(f64, 0.9), top_p.?.float);
+}
+
+test "GroqChatLanguageModel buildRequestBody with seed" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(allocator, "test-model", .{});
+
+    const prompt = [_]lm.LanguageModelV3Prompt{
+        .{
+            .role = .user,
+            .content = .{
+                .user = &[_]lm.LanguageModelV3Content{
+                    .{ .text = .{ .text = "Hello" } },
+                },
+            },
+        },
+    };
+
+    const call_options = lm.LanguageModelV3CallOptions{
+        .prompt = &prompt,
+        .max_output_tokens = null,
+        .temperature = null,
+        .top_p = null,
+        .top_k = null,
+        .seed = 42,
+        .max_retries = null,
+        .abort_signal = null,
+        .headers = null,
+        .stop_sequences = null,
+        .tools = null,
+    };
+
+    const request_body = try model.buildRequestBody(allocator, call_options);
+    defer {
+        if (request_body == .object) {
+            request_body.object.deinit();
+        }
+    }
+
+    try std.testing.expect(request_body == .object);
+    const seed = request_body.object.get("seed");
+    try std.testing.expect(seed != null);
+    try std.testing.expectEqual(@as(i64, 42), seed.?.integer);
+}
+
+test "GroqChatLanguageModel buildRequestBody with stop sequences" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(allocator, "test-model", .{});
+
+    const prompt = [_]lm.LanguageModelV3Prompt{
+        .{
+            .role = .user,
+            .content = .{
+                .user = &[_]lm.LanguageModelV3Content{
+                    .{ .text = .{ .text = "Hello" } },
+                },
+            },
+        },
+    };
+
+    const stops = [_][]const u8{ "END", "STOP" };
+
+    const call_options = lm.LanguageModelV3CallOptions{
+        .prompt = &prompt,
+        .max_output_tokens = null,
+        .temperature = null,
+        .top_p = null,
+        .top_k = null,
+        .seed = null,
+        .max_retries = null,
+        .abort_signal = null,
+        .headers = null,
+        .stop_sequences = &stops,
+        .tools = null,
+    };
+
+    const request_body = try model.buildRequestBody(allocator, call_options);
+    defer {
+        if (request_body == .object) {
+            request_body.object.deinit();
+        }
+    }
+
+    try std.testing.expect(request_body == .object);
+    const stop = request_body.object.get("stop");
+    try std.testing.expect(stop != null);
+    try std.testing.expect(stop.?.array.items.len == 2);
+}
+
+test "GroqChatLanguageModel buildRequestBody with system message" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqChatLanguageModel.init(allocator, "test-model", .{});
+
+    const prompt = [_]lm.LanguageModelV3Prompt{
+        .{
+            .role = .system,
+            .content = .{ .system = "You are a helpful assistant" },
+        },
+        .{
+            .role = .user,
+            .content = .{
+                .user = &[_]lm.LanguageModelV3Content{
+                    .{ .text = .{ .text = "Hello" } },
+                },
+            },
+        },
+    };
+
+    const call_options = lm.LanguageModelV3CallOptions{
+        .prompt = &prompt,
+        .max_output_tokens = null,
+        .temperature = null,
+        .top_p = null,
+        .top_k = null,
+        .seed = null,
+        .max_retries = null,
+        .abort_signal = null,
+        .headers = null,
+        .stop_sequences = null,
+        .tools = null,
+    };
+
+    const request_body = try model.buildRequestBody(allocator, call_options);
+    defer {
+        if (request_body == .object) {
+            request_body.object.deinit();
+        }
+    }
+
+    try std.testing.expect(request_body == .object);
+    const messages = request_body.object.get("messages");
+    try std.testing.expect(messages != null);
+    try std.testing.expect(messages.?.array.items.len == 2);
+
+    const system_msg = messages.?.array.items[0].object.get("role");
+    try std.testing.expectEqualStrings("system", system_msg.?.string);
+}

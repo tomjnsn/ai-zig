@@ -167,9 +167,351 @@ pub fn elevenlabs() *ElevenLabsProvider {
     return &default_provider.?;
 }
 
-test "ElevenLabsProvider basic" {
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "ElevenLabsProvider basic initialization" {
     const allocator = std.testing.allocator;
     var provider = createElevenLabsWithSettings(allocator, .{});
     defer provider.deinit();
     try std.testing.expectEqualStrings("elevenlabs", provider.getProvider());
+}
+
+test "ElevenLabsProvider with default settings" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("elevenlabs", provider.getProvider());
+    try std.testing.expectEqualStrings("https://api.elevenlabs.io", provider.base_url);
+}
+
+test "ElevenLabsProvider with custom base_url" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabsWithSettings(allocator, .{
+        .base_url = "https://custom.elevenlabs.com",
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("https://custom.elevenlabs.com", provider.base_url);
+}
+
+test "ElevenLabsProvider with custom api_key" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabsWithSettings(allocator, .{
+        .api_key = "test_api_key_123",
+    });
+    defer provider.deinit();
+
+    try std.testing.expect(provider.settings.api_key != null);
+    try std.testing.expectEqualStrings("test_api_key_123", provider.settings.api_key.?);
+}
+
+test "ElevenLabsProvider base_url defaults when null" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabsWithSettings(allocator, .{
+        .base_url = null,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("https://api.elevenlabs.io", provider.base_url);
+}
+
+test "ElevenLabsProvider specification_version" {
+    try std.testing.expectEqualStrings("v3", ElevenLabsProvider.specification_version);
+}
+
+test "ElevenLabsProvider speechModel creates correct model" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const model = provider.speechModel("eleven_multilingual_v2");
+    try std.testing.expectEqualStrings("eleven_multilingual_v2", model.getModelId());
+    try std.testing.expectEqualStrings("elevenlabs.speech", model.getProvider());
+}
+
+test "ElevenLabsProvider speech alias creates correct model" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const model = provider.speech("eleven_turbo_v2_5");
+    try std.testing.expectEqualStrings("eleven_turbo_v2_5", model.getModelId());
+}
+
+test "ElevenLabsProvider transcriptionModel creates correct model" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const model = provider.transcriptionModel("scribe");
+    try std.testing.expectEqualStrings("scribe", model.getModelId());
+    try std.testing.expectEqualStrings("elevenlabs.transcription", model.getProvider());
+}
+
+test "ElevenLabsProvider transcription alias creates correct model" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const model = provider.transcription("scribe");
+    try std.testing.expectEqualStrings("scribe", model.getModelId());
+}
+
+test "ElevenLabsProvider multiple models with same provider" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const speech_model = provider.speech("eleven_multilingual_v2");
+    const transcription_model = provider.transcription("scribe");
+
+    try std.testing.expectEqualStrings("eleven_multilingual_v2", speech_model.getModelId());
+    try std.testing.expectEqualStrings("scribe", transcription_model.getModelId());
+}
+
+test "ElevenLabsProvider asProvider returns ProviderV3" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const prov_v3 = provider.asProvider();
+    try std.testing.expect(prov_v3.vtable != undefined);
+    try std.testing.expect(prov_v3.impl != undefined);
+}
+
+test "ElevenLabsProvider vtable languageModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const prov_v3 = provider.asProvider();
+    const result = prov_v3.vtable.languageModel(prov_v3.impl, "test-model");
+
+    try std.testing.expect(result.err != null);
+    try std.testing.expectEqual(error.NoSuchModel, result.err.?);
+}
+
+test "ElevenLabsProvider vtable embeddingModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const prov_v3 = provider.asProvider();
+    const result = prov_v3.vtable.embeddingModel(prov_v3.impl, "test-model");
+
+    try std.testing.expect(result.err != null);
+    try std.testing.expectEqual(error.NoSuchModel, result.err.?);
+}
+
+test "ElevenLabsProvider vtable imageModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const prov_v3 = provider.asProvider();
+    const result = prov_v3.vtable.imageModel(prov_v3.impl, "test-model");
+
+    try std.testing.expect(result.err != null);
+    try std.testing.expectEqual(error.NoSuchModel, result.err.?);
+}
+
+test "ElevenLabsProvider vtable speechModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const prov_v3 = provider.asProvider();
+    const result = prov_v3.vtable.speechModel(prov_v3.impl, "test-model");
+
+    try std.testing.expect(result.err != null);
+    try std.testing.expectEqual(error.NoSuchModel, result.err.?);
+}
+
+test "ElevenLabsProvider vtable transcriptionModel returns error" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const prov_v3 = provider.asProvider();
+    const result = prov_v3.vtable.transcriptionModel(prov_v3.impl, "test-model");
+
+    try std.testing.expect(result.err != null);
+    try std.testing.expectEqual(error.NoSuchModel, result.err.?);
+}
+
+test "ElevenLabsSpeechModel initialization" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsSpeechModel.init(allocator, "eleven_multilingual_v2", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("eleven_multilingual_v2", model.model_id);
+    try std.testing.expectEqualStrings("https://api.elevenlabs.io", model.base_url);
+}
+
+test "ElevenLabsSpeechModel getModelId" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsSpeechModel.init(allocator, "eleven_turbo_v2_5", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("eleven_turbo_v2_5", model.getModelId());
+}
+
+test "ElevenLabsSpeechModel getProvider" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsSpeechModel.init(allocator, "test_model", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("elevenlabs.speech", model.getProvider());
+}
+
+test "ElevenLabsSpeechModel with custom base_url" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsSpeechModel.init(allocator, "test_model", "https://custom.url.com");
+
+    try std.testing.expectEqualStrings("https://custom.url.com", model.base_url);
+}
+
+test "ElevenLabsSpeechModel with empty model_id" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsSpeechModel.init(allocator, "", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("", model.getModelId());
+}
+
+test "ElevenLabsTranscriptionModel initialization" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsTranscriptionModel.init(allocator, "scribe", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("scribe", model.model_id);
+    try std.testing.expectEqualStrings("https://api.elevenlabs.io", model.base_url);
+}
+
+test "ElevenLabsTranscriptionModel getModelId" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsTranscriptionModel.init(allocator, "scribe", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("scribe", model.getModelId());
+}
+
+test "ElevenLabsTranscriptionModel getProvider" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsTranscriptionModel.init(allocator, "scribe", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("elevenlabs.transcription", model.getProvider());
+}
+
+test "ElevenLabsTranscriptionModel with custom base_url" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsTranscriptionModel.init(allocator, "scribe", "https://custom.transcription.com");
+
+    try std.testing.expectEqualStrings("https://custom.transcription.com", model.base_url);
+}
+
+test "ElevenLabsTranscriptionModel with empty model_id" {
+    const allocator = std.testing.allocator;
+    const model = ElevenLabsTranscriptionModel.init(allocator, "", "https://api.elevenlabs.io");
+
+    try std.testing.expectEqualStrings("", model.getModelId());
+}
+
+test "ElevenLabsProviderSettings with null values" {
+    const settings = ElevenLabsProviderSettings{
+        .base_url = null,
+        .api_key = null,
+        .headers = null,
+        .http_client = null,
+    };
+
+    try std.testing.expect(settings.base_url == null);
+    try std.testing.expect(settings.api_key == null);
+    try std.testing.expect(settings.headers == null);
+    try std.testing.expect(settings.http_client == null);
+}
+
+test "ElevenLabsProviderSettings with custom values" {
+    const settings = ElevenLabsProviderSettings{
+        .base_url = "https://custom.com",
+        .api_key = "test_key",
+    };
+
+    try std.testing.expectEqualStrings("https://custom.com", settings.base_url.?);
+    try std.testing.expectEqualStrings("test_key", settings.api_key.?);
+}
+
+test "getApiKeyFromEnv returns null when not set" {
+    // Note: This test assumes ELEVENLABS_API_KEY is not set in the environment
+    // In a real test environment, you might want to temporarily unset it
+    const api_key = getApiKeyFromEnv();
+    // We can't assert the value since it depends on the environment
+    // but we can test that the function doesn't crash
+    _ = api_key;
+}
+
+test "elevenlabs default provider singleton" {
+    const provider1 = elevenlabs();
+    const provider2 = elevenlabs();
+
+    // Both calls should return the same instance
+    try std.testing.expect(provider1 == provider2);
+}
+
+test "createElevenLabs and createElevenLabsWithSettings are equivalent with empty settings" {
+    const allocator = std.testing.allocator;
+    var provider1 = createElevenLabs(allocator);
+    var provider2 = createElevenLabsWithSettings(allocator, .{});
+    defer provider1.deinit();
+    defer provider2.deinit();
+
+    try std.testing.expectEqualStrings(provider1.base_url, provider2.base_url);
+    try std.testing.expectEqualStrings(provider1.getProvider(), provider2.getProvider());
+}
+
+test "ElevenLabsProvider models inherit provider base_url" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabsWithSettings(allocator, .{
+        .base_url = "https://custom-elevenlabs.com",
+    });
+    defer provider.deinit();
+
+    const speech_model = provider.speech("test_model");
+    const transcription_model = provider.transcription("test_model");
+
+    try std.testing.expectEqualStrings("https://custom-elevenlabs.com", speech_model.base_url);
+    try std.testing.expectEqualStrings("https://custom-elevenlabs.com", transcription_model.base_url);
+}
+
+test "ElevenLabsProvider multiple speech models with different IDs" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const model1 = provider.speech("eleven_multilingual_v2");
+    const model2 = provider.speech("eleven_turbo_v2_5");
+    const model3 = provider.speech("eleven_monolingual_v1");
+
+    try std.testing.expectEqualStrings("eleven_multilingual_v2", model1.getModelId());
+    try std.testing.expectEqualStrings("eleven_turbo_v2_5", model2.getModelId());
+    try std.testing.expectEqualStrings("eleven_monolingual_v1", model3.getModelId());
+}
+
+test "ElevenLabsProvider edge case: very long model ID" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const long_id = "a" ** 100;
+    const model = provider.speech(long_id);
+
+    try std.testing.expectEqualStrings(long_id, model.getModelId());
+}
+
+test "ElevenLabsProvider edge case: special characters in model ID" {
+    const allocator = std.testing.allocator;
+    var provider = createElevenLabs(allocator);
+    defer provider.deinit();
+
+    const special_id = "model-with-dashes_and_underscores.123";
+    const model = provider.speech(special_id);
+
+    try std.testing.expectEqualStrings(special_id, model.getModelId());
 }

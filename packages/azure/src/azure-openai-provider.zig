@@ -290,6 +290,35 @@ pub fn azure() *AzureOpenAIProvider {
     return &default_provider.?;
 }
 
+test "AzureOpenAIProviderSettings defaults" {
+    const settings = AzureOpenAIProviderSettings{};
+
+    try std.testing.expectEqual(null, settings.resource_name);
+    try std.testing.expectEqual(null, settings.base_url);
+    try std.testing.expectEqual(null, settings.api_key);
+    try std.testing.expectEqual(null, settings.headers);
+    try std.testing.expectEqual(null, settings.api_version);
+    try std.testing.expectEqual(null, settings.use_deployment_based_urls);
+    try std.testing.expectEqual(null, settings.http_client);
+    try std.testing.expectEqual(null, settings.generate_id);
+}
+
+test "AzureOpenAIProviderSettings custom values" {
+    const settings = AzureOpenAIProviderSettings{
+        .resource_name = "myresource",
+        .base_url = "https://custom.openai.azure.com/openai",
+        .api_key = "test-key",
+        .api_version = "2024-03-01-preview",
+        .use_deployment_based_urls = true,
+    };
+
+    try std.testing.expectEqualStrings("myresource", settings.resource_name.?);
+    try std.testing.expectEqualStrings("https://custom.openai.azure.com/openai", settings.base_url.?);
+    try std.testing.expectEqualStrings("test-key", settings.api_key.?);
+    try std.testing.expectEqualStrings("2024-03-01-preview", settings.api_version.?);
+    try std.testing.expectEqual(true, settings.use_deployment_based_urls.?);
+}
+
 test "AzureOpenAIProvider basic" {
     const allocator = std.testing.allocator;
 
@@ -301,6 +330,17 @@ test "AzureOpenAIProvider basic" {
     try std.testing.expectEqualStrings("azure", provider.getProvider());
 }
 
+test "AzureOpenAIProvider with default settings" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzure(allocator);
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("azure", provider.getProvider());
+    try std.testing.expectEqualStrings("v1", provider.config.api_version);
+    try std.testing.expectEqual(false, provider.config.use_deployment_based_urls);
+}
+
 test "AzureOpenAIProvider with resource name" {
     const allocator = std.testing.allocator;
 
@@ -310,6 +350,46 @@ test "AzureOpenAIProvider with resource name" {
     defer provider.deinit();
 
     try std.testing.expectEqualStrings("azure", provider.getProvider());
+}
+
+test "AzureOpenAIProvider with custom base_url overrides resource_name" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .resource_name = "ignored-resource",
+        .base_url = "https://custom.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("https://custom.openai.azure.com/openai", provider.config.base_url);
+}
+
+test "AzureOpenAIProvider with custom api_version" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_version = "2024-03-01-preview",
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("2024-03-01-preview", provider.config.api_version);
+}
+
+test "AzureOpenAIProvider with deployment-based URLs" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .use_deployment_based_urls = true,
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqual(true, provider.config.use_deployment_based_urls);
+}
+
+test "AzureOpenAIProvider specification version" {
+    try std.testing.expectEqualStrings("v3", AzureOpenAIProvider.specification_version);
 }
 
 test "AzureOpenAIProvider chat model" {
@@ -324,6 +404,18 @@ test "AzureOpenAIProvider chat model" {
     try std.testing.expectEqualStrings("gpt-4", model.getModelId());
 }
 
+test "AzureOpenAIProvider languageModel alias" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.languageModel("gpt-4-turbo");
+    try std.testing.expectEqualStrings("gpt-4-turbo", model.getModelId());
+}
+
 test "AzureOpenAIProvider embedding model" {
     const allocator = std.testing.allocator;
 
@@ -334,4 +426,300 @@ test "AzureOpenAIProvider embedding model" {
 
     const model = provider.embeddingModel("text-embedding-ada-002");
     try std.testing.expectEqualStrings("text-embedding-ada-002", model.getModelId());
+}
+
+test "AzureOpenAIProvider embedding alias" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.embedding("text-embedding-3-small");
+    try std.testing.expectEqualStrings("text-embedding-3-small", model.getModelId());
+}
+
+test "AzureOpenAIProvider textEmbedding deprecated alias" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.textEmbedding("text-embedding-3-large");
+    try std.testing.expectEqualStrings("text-embedding-3-large", model.getModelId());
+}
+
+test "AzureOpenAIProvider textEmbeddingModel deprecated alias" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.textEmbeddingModel("text-embedding-ada-002");
+    try std.testing.expectEqualStrings("text-embedding-ada-002", model.getModelId());
+}
+
+test "AzureOpenAIProvider image model" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.imageModel("dall-e-3");
+    try std.testing.expectEqualStrings("dall-e-3", model.getModelId());
+}
+
+test "AzureOpenAIProvider image alias" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.image("dall-e-2");
+    try std.testing.expectEqualStrings("dall-e-2", model.getModelId());
+}
+
+test "AzureOpenAIProvider speech model" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.speech("tts-1");
+    try std.testing.expectEqualStrings("tts-1", model.getModelId());
+}
+
+test "AzureOpenAIProvider transcription model" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const model = provider.transcription("whisper-1");
+    try std.testing.expectEqualStrings("whisper-1", model.getModelId());
+}
+
+test "AzureOpenAIProvider multiple models from same provider" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const chat_model = provider.chat("gpt-4");
+    const embed_model = provider.embeddingModel("text-embedding-ada-002");
+    const image_model = provider.imageModel("dall-e-3");
+
+    try std.testing.expectEqualStrings("gpt-4", chat_model.getModelId());
+    try std.testing.expectEqualStrings("text-embedding-ada-002", embed_model.getModelId());
+    try std.testing.expectEqualStrings("dall-e-3", image_model.getModelId());
+}
+
+test "AzureOpenAIProvider models with deployment names" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .use_deployment_based_urls = true,
+    });
+    defer provider.deinit();
+
+    // Test with deployment names instead of model IDs
+    const chat_model = provider.chat("my-gpt4-deployment");
+    const embed_model = provider.embeddingModel("my-embedding-deployment");
+
+    try std.testing.expectEqualStrings("my-gpt4-deployment", chat_model.getModelId());
+    try std.testing.expectEqualStrings("my-embedding-deployment", embed_model.getModelId());
+}
+
+test "AzureOpenAIProvider buildOpenAIConfig" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const config = provider.buildOpenAIConfig("azure.test");
+    try std.testing.expectEqualStrings("azure.test", config.provider);
+    try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai", config.base_url);
+}
+
+test "createAzure helper function" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzure(allocator);
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("azure", provider.getProvider());
+}
+
+test "createAzureWithSettings helper function" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://test.openai.azure.com/openai",
+        .api_version = "2024-02-15-preview",
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("azure", provider.getProvider());
+    try std.testing.expectEqualStrings("2024-02-15-preview", provider.config.api_version);
+}
+
+test "AzureOpenAIProvider asProvider interface" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    const provider_interface = provider.asProvider();
+
+    // Test language model through vtable
+    const lang_result = provider_interface.vtable.languageModel(provider_interface.impl, "gpt-4");
+    try std.testing.expectEqual(@as(@TypeOf(lang_result), provider_v3.LanguageModelResult{ .ok = lang_result.ok }), lang_result);
+
+    // Test embedding model through vtable
+    const embed_result = provider_interface.vtable.embeddingModel(provider_interface.impl, "text-embedding-ada-002");
+    try std.testing.expectEqual(@as(@TypeOf(embed_result), provider_v3.EmbeddingModelResult{ .ok = embed_result.ok }), embed_result);
+
+    // Test image model through vtable
+    const image_result = provider_interface.vtable.imageModel(provider_interface.impl, "dall-e-3");
+    try std.testing.expectEqual(@as(@TypeOf(image_result), provider_v3.ImageModelResult{ .ok = image_result.ok }), image_result);
+
+    // Test speech model through vtable
+    const speech_result = provider_interface.vtable.speechModel(provider_interface.impl, "tts-1");
+    try std.testing.expectEqual(@as(@TypeOf(speech_result), provider_v3.SpeechModelResult{ .ok = speech_result.ok }), speech_result);
+
+    // Test transcription model through vtable
+    const transcription_result = provider_interface.vtable.transcriptionModel(provider_interface.impl, "whisper-1");
+    try std.testing.expectEqual(@as(@TypeOf(transcription_result), provider_v3.TranscriptionModelResult{ .ok = transcription_result.ok }), transcription_result);
+}
+
+test "AzureOpenAIProvider config propagation" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://custom.openai.azure.com/openai",
+        .api_version = "2024-03-01-preview",
+        .use_deployment_based_urls = true,
+    });
+    defer provider.deinit();
+
+    // Verify config is properly initialized
+    try std.testing.expectEqualStrings("azure", provider.config.provider);
+    try std.testing.expectEqualStrings("https://custom.openai.azure.com/openai", provider.config.base_url);
+    try std.testing.expectEqualStrings("2024-03-01-preview", provider.config.api_version);
+    try std.testing.expectEqual(true, provider.config.use_deployment_based_urls);
+}
+
+test "AzureOpenAIProvider allocator usage" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    // Verify allocator is stored correctly
+    try std.testing.expectEqual(allocator, provider.allocator);
+}
+
+test "AzureOpenAIProvider deinit safety" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+
+    // Call deinit multiple times should be safe
+    provider.deinit();
+    provider.deinit();
+}
+
+test "AzureOpenAIProvider different API versions" {
+    const allocator = std.testing.allocator;
+
+    // Test with various API versions
+    const versions = [_][]const u8{
+        "v1",
+        "2023-05-15",
+        "2024-02-15-preview",
+        "2024-03-01-preview",
+        "2024-05-01-preview",
+    };
+
+    for (versions) |version| {
+        var provider = createAzureWithSettings(allocator, .{
+            .base_url = "https://myresource.openai.azure.com/openai",
+            .api_version = version,
+        });
+        defer provider.deinit();
+
+        try std.testing.expectEqualStrings(version, provider.config.api_version);
+    }
+}
+
+test "AzureOpenAIProvider empty deployment ID" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    // Test with empty deployment ID
+    const model = provider.chat("");
+    try std.testing.expectEqualStrings("", model.getModelId());
+}
+
+test "AzureOpenAIProvider long deployment ID" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    // Test with very long deployment ID
+    const long_id = "this-is-a-very-long-deployment-id-with-many-characters-and-dashes-1234567890";
+    const model = provider.chat(long_id);
+    try std.testing.expectEqualStrings(long_id, model.getModelId());
+}
+
+test "AzureOpenAIProvider model factory methods return correct types" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    // Verify each factory method returns the expected model type
+    _ = provider.chat("gpt-4");
+    _ = provider.languageModel("gpt-4");
+    _ = provider.embeddingModel("text-embedding-ada-002");
+    _ = provider.embedding("text-embedding-ada-002");
+    _ = provider.textEmbedding("text-embedding-ada-002");
+    _ = provider.textEmbeddingModel("text-embedding-ada-002");
+    _ = provider.imageModel("dall-e-3");
+    _ = provider.image("dall-e-3");
+    _ = provider.speech("tts-1");
+    _ = provider.transcription("whisper-1");
 }

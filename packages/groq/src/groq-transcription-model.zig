@@ -139,3 +139,187 @@ test "GroqTranscriptionModel init" {
 
     try std.testing.expectEqualStrings("whisper-large-v3-turbo", model.getModelId());
 }
+
+test "GroqTranscriptionModel init with custom config" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqTranscriptionModel.init(
+        allocator,
+        "custom-model",
+        .{
+            .provider = "groq.transcription.custom",
+            .base_url = "https://custom.groq.com",
+        },
+    );
+
+    try std.testing.expectEqualStrings("custom-model", model.getModelId());
+    try std.testing.expectEqualStrings("groq.transcription.custom", model.getProvider());
+}
+
+test "GroqTranscriptionModel getModelId and getProvider" {
+    const allocator = std.testing.allocator;
+
+    var model = GroqTranscriptionModel.init(
+        allocator,
+        "whisper-large-v3",
+        .{},
+    );
+
+    try std.testing.expectEqualStrings("whisper-large-v3", model.getModelId());
+    try std.testing.expectEqualStrings("groq", model.getProvider());
+}
+
+test "GroqTranscriptionModel multiple instances" {
+    const allocator = std.testing.allocator;
+
+    var model1 = GroqTranscriptionModel.init(allocator, "whisper-large-v3-turbo", .{});
+    var model2 = GroqTranscriptionModel.init(allocator, "whisper-large-v3", .{});
+
+    try std.testing.expectEqualStrings("whisper-large-v3-turbo", model1.getModelId());
+    try std.testing.expectEqualStrings("whisper-large-v3", model2.getModelId());
+
+    try std.testing.expectEqualStrings("groq", model1.getProvider());
+    try std.testing.expectEqualStrings("groq", model2.getProvider());
+}
+
+test "GroqTranscriptionModel ResponseFormat toString" {
+    try std.testing.expectEqualStrings("json", GroqTranscriptionModel.ResponseFormat.json.toString());
+    try std.testing.expectEqualStrings("text", GroqTranscriptionModel.ResponseFormat.text.toString());
+    try std.testing.expectEqualStrings("srt", GroqTranscriptionModel.ResponseFormat.srt.toString());
+    try std.testing.expectEqualStrings("verbose_json", GroqTranscriptionModel.ResponseFormat.verbose_json.toString());
+    try std.testing.expectEqualStrings("vtt", GroqTranscriptionModel.ResponseFormat.vtt.toString());
+}
+
+test "GroqTranscriptionModel ResponseFormat enum values" {
+    const json = GroqTranscriptionModel.ResponseFormat.json;
+    const text = GroqTranscriptionModel.ResponseFormat.text;
+    const srt = GroqTranscriptionModel.ResponseFormat.srt;
+    const verbose_json = GroqTranscriptionModel.ResponseFormat.verbose_json;
+    const vtt = GroqTranscriptionModel.ResponseFormat.vtt;
+
+    try std.testing.expect(json != text);
+    try std.testing.expect(text != srt);
+    try std.testing.expect(srt != verbose_json);
+    try std.testing.expect(verbose_json != vtt);
+}
+
+test "GroqTranscriptionModel TranscriptionOptions default values" {
+    const options = GroqTranscriptionModel.TranscriptionOptions{};
+
+    try std.testing.expect(options.language == null);
+    try std.testing.expect(options.response_format == null);
+    try std.testing.expect(options.temperature == null);
+    try std.testing.expect(options.prompt == null);
+}
+
+test "GroqTranscriptionModel TranscriptionOptions with custom values" {
+    const options = GroqTranscriptionModel.TranscriptionOptions{
+        .language = "en",
+        .response_format = .verbose_json,
+        .temperature = 0.5,
+        .prompt = "Transcribe this audio",
+    };
+
+    try std.testing.expect(options.language != null);
+    try std.testing.expectEqualStrings("en", options.language.?);
+    try std.testing.expect(options.response_format != null);
+    try std.testing.expectEqual(GroqTranscriptionModel.ResponseFormat.verbose_json, options.response_format.?);
+    try std.testing.expect(options.temperature != null);
+    try std.testing.expectEqual(@as(f32, 0.5), options.temperature.?);
+    try std.testing.expect(options.prompt != null);
+    try std.testing.expectEqualStrings("Transcribe this audio", options.prompt.?);
+}
+
+test "GroqTranscriptionModel Segment structure" {
+    const segment = GroqTranscriptionModel.Segment{
+        .id = 1,
+        .start = 0.0,
+        .end = 5.5,
+        .text = "Hello world",
+    };
+
+    try std.testing.expectEqual(@as(usize, 1), segment.id);
+    try std.testing.expectEqual(@as(f64, 0.0), segment.start);
+    try std.testing.expectEqual(@as(f64, 5.5), segment.end);
+    try std.testing.expectEqualStrings("Hello world", segment.text);
+}
+
+test "GroqTranscriptionModel TranscriptionResult structure" {
+    const segments = [_]GroqTranscriptionModel.Segment{
+        .{
+            .id = 0,
+            .start = 0.0,
+            .end = 2.5,
+            .text = "First segment",
+        },
+        .{
+            .id = 1,
+            .start = 2.5,
+            .end = 5.0,
+            .text = "Second segment",
+        },
+    };
+
+    const result = GroqTranscriptionModel.TranscriptionResult{
+        .text = "Full transcription text",
+        .segments = &segments,
+        .language = "en",
+        .duration = 5.0,
+    };
+
+    try std.testing.expectEqualStrings("Full transcription text", result.text);
+    try std.testing.expect(result.segments != null);
+    try std.testing.expect(result.segments.?.len == 2);
+    try std.testing.expect(result.language != null);
+    try std.testing.expectEqualStrings("en", result.language.?);
+    try std.testing.expect(result.duration != null);
+    try std.testing.expectEqual(@as(f64, 5.0), result.duration.?);
+}
+
+test "GroqTranscriptionModel TranscriptionResult minimal" {
+    const result = GroqTranscriptionModel.TranscriptionResult{
+        .text = "Basic transcription",
+        .segments = null,
+        .language = null,
+        .duration = null,
+    };
+
+    try std.testing.expectEqualStrings("Basic transcription", result.text);
+    try std.testing.expect(result.segments == null);
+    try std.testing.expect(result.language == null);
+    try std.testing.expect(result.duration == null);
+}
+
+test "GroqTranscriptionModel different response formats" {
+    const formats = [_]GroqTranscriptionModel.ResponseFormat{
+        .json,
+        .text,
+        .srt,
+        .verbose_json,
+        .vtt,
+    };
+
+    for (formats) |format| {
+        const str = format.toString();
+        try std.testing.expect(str.len > 0);
+    }
+}
+
+test "GroqTranscriptionModel TranscriptionOptions with various languages" {
+    const languages = [_][]const u8{
+        "en", // English
+        "es", // Spanish
+        "fr", // French
+        "de", // German
+        "zh", // Chinese
+        "ja", // Japanese
+    };
+
+    for (languages) |lang| {
+        const options = GroqTranscriptionModel.TranscriptionOptions{
+            .language = lang,
+        };
+        try std.testing.expect(options.language != null);
+        try std.testing.expectEqualStrings(lang, options.language.?);
+    }
+}

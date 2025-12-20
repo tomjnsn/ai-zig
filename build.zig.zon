@@ -1,5 +1,6 @@
 .{
-    .name = "zig-ai-sdk",
+    .fingerprint = 0xb4306c6914b0b550,
+    .name = .zig_ai_sdk,
     .version = "0.1.0",
     .minimum_zig_version = "0.13.0",
     .paths = .{

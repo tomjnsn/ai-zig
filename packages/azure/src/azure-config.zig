@@ -57,6 +57,33 @@ pub fn buildBaseUrlFromResourceName(allocator: std.mem.Allocator, resource_name:
     );
 }
 
+test "AzureOpenAIConfig default values" {
+    const config = AzureOpenAIConfig{
+        .base_url = "https://test.openai.azure.com/openai",
+    };
+
+    try std.testing.expectEqualStrings("azure.chat", config.provider);
+    try std.testing.expectEqualStrings("v1", config.api_version);
+    try std.testing.expectEqual(false, config.use_deployment_based_urls);
+    try std.testing.expectEqual(null, config.headers_fn);
+    try std.testing.expectEqual(null, config.http_client);
+    try std.testing.expectEqual(null, config.generate_id);
+}
+
+test "AzureOpenAIConfig custom values" {
+    const config = AzureOpenAIConfig{
+        .provider = "azure.custom",
+        .base_url = "https://custom.openai.azure.com/openai",
+        .api_version = "2024-03-01-preview",
+        .use_deployment_based_urls = true,
+    };
+
+    try std.testing.expectEqualStrings("azure.custom", config.provider);
+    try std.testing.expectEqualStrings("https://custom.openai.azure.com/openai", config.base_url);
+    try std.testing.expectEqualStrings("2024-03-01-preview", config.api_version);
+    try std.testing.expectEqual(true, config.use_deployment_based_urls);
+}
+
 test "buildAzureUrl with v1 API" {
     const allocator = std.testing.allocator;
 
@@ -71,6 +98,7 @@ test "buildAzureUrl with v1 API" {
 
     try std.testing.expect(std.mem.indexOf(u8, url, "/v1/chat/completions") != null);
     try std.testing.expect(std.mem.indexOf(u8, url, "api-version=2024-02-15-preview") != null);
+    try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/v1/chat/completions?api-version=2024-02-15-preview", url);
 }
 
 test "buildAzureUrl with deployment-based URLs" {
@@ -87,6 +115,92 @@ test "buildAzureUrl with deployment-based URLs" {
 
     try std.testing.expect(std.mem.indexOf(u8, url, "/deployments/gpt-4/chat/completions") != null);
     try std.testing.expect(std.mem.indexOf(u8, url, "api-version=2024-02-15-preview") != null);
+    try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-02-15-preview", url);
+}
+
+test "buildAzureUrl with different paths" {
+    const allocator = std.testing.allocator;
+
+    const config = AzureOpenAIConfig{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_version = "v1",
+        .use_deployment_based_urls = false,
+    };
+
+    // Test embeddings path
+    {
+        const url = try buildAzureUrl(allocator, &config, "/embeddings", "text-embedding-ada-002");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/v1/embeddings?api-version=v1", url);
+    }
+
+    // Test images path
+    {
+        const url = try buildAzureUrl(allocator, &config, "/images/generations", "dall-e-3");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/v1/images/generations?api-version=v1", url);
+    }
+
+    // Test audio path
+    {
+        const url = try buildAzureUrl(allocator, &config, "/audio/transcriptions", "whisper-1");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/v1/audio/transcriptions?api-version=v1", url);
+    }
+}
+
+test "buildAzureUrl with deployment-based URLs different paths" {
+    const allocator = std.testing.allocator;
+
+    const config = AzureOpenAIConfig{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_version = "2024-02-15-preview",
+        .use_deployment_based_urls = true,
+    };
+
+    // Test embeddings path
+    {
+        const url = try buildAzureUrl(allocator, &config, "/embeddings", "embedding-deployment");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/deployments/embedding-deployment/embeddings?api-version=2024-02-15-preview", url);
+    }
+
+    // Test images path
+    {
+        const url = try buildAzureUrl(allocator, &config, "/images/generations", "dalle-deployment");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/deployments/dalle-deployment/images/generations?api-version=2024-02-15-preview", url);
+    }
+}
+
+test "buildAzureUrl with special characters in model_id" {
+    const allocator = std.testing.allocator;
+
+    const config = AzureOpenAIConfig{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_version = "v1",
+        .use_deployment_based_urls = true,
+    };
+
+    const url = try buildAzureUrl(allocator, &config, "/chat/completions", "gpt-4-turbo-preview");
+    defer allocator.free(url);
+
+    try std.testing.expect(std.mem.indexOf(u8, url, "/deployments/gpt-4-turbo-preview/chat/completions") != null);
+}
+
+test "buildAzureUrl with empty path" {
+    const allocator = std.testing.allocator;
+
+    const config = AzureOpenAIConfig{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_version = "v1",
+        .use_deployment_based_urls = false,
+    };
+
+    const url = try buildAzureUrl(allocator, &config, "", "gpt-4");
+    defer allocator.free(url);
+
+    try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai/v1?api-version=v1", url);
 }
 
 test "buildBaseUrlFromResourceName" {
@@ -96,4 +210,38 @@ test "buildBaseUrlFromResourceName" {
     defer allocator.free(url);
 
     try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai", url);
+}
+
+test "buildBaseUrlFromResourceName with different resource names" {
+    const allocator = std.testing.allocator;
+
+    // Test simple name
+    {
+        const url = try buildBaseUrlFromResourceName(allocator, "test");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://test.openai.azure.com/openai", url);
+    }
+
+    // Test name with dashes
+    {
+        const url = try buildBaseUrlFromResourceName(allocator, "my-resource-123");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://my-resource-123.openai.azure.com/openai", url);
+    }
+
+    // Test longer name
+    {
+        const url = try buildBaseUrlFromResourceName(allocator, "production-openai-east");
+        defer allocator.free(url);
+        try std.testing.expectEqualStrings("https://production-openai-east.openai.azure.com/openai", url);
+    }
+}
+
+test "buildBaseUrlFromResourceName with empty string" {
+    const allocator = std.testing.allocator;
+
+    const url = try buildBaseUrlFromResourceName(allocator, "");
+    defer allocator.free(url);
+
+    try std.testing.expectEqualStrings("https://.openai.azure.com/openai", url);
 }

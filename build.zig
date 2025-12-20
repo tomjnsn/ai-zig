@@ -120,6 +120,15 @@ pub fn build(b: *std.Build) void {
     deepseek_mod.addImport("provider", provider_mod);
     deepseek_mod.addImport("provider-utils", provider_utils_mod);
 
+    // OpenAI Compatible provider (needed by xAI, Perplexity, etc.)
+    const openai_compatible_mod = b.addModule("openai-compatible", .{
+        .root_source_file = b.path("packages/openai-compatible/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    openai_compatible_mod.addImport("provider", provider_mod);
+    openai_compatible_mod.addImport("provider-utils", provider_utils_mod);
+
     // xAI provider
     const xai_mod = b.addModule("xai", .{
         .root_source_file = b.path("packages/xai/src/index.zig"),
@@ -128,6 +137,7 @@ pub fn build(b: *std.Build) void {
     });
     xai_mod.addImport("provider", provider_mod);
     xai_mod.addImport("provider-utils", provider_utils_mod);
+    xai_mod.addImport("openai-compatible", openai_compatible_mod);
 
     // Perplexity provider
     const perplexity_mod = b.addModule("perplexity", .{
@@ -137,6 +147,7 @@ pub fn build(b: *std.Build) void {
     });
     perplexity_mod.addImport("provider", provider_mod);
     perplexity_mod.addImport("provider-utils", provider_utils_mod);
+    perplexity_mod.addImport("openai-compatible", openai_compatible_mod);
 
     // Together AI provider
     const togetherai_mod = b.addModule("togetherai", .{
@@ -191,15 +202,6 @@ pub fn build(b: *std.Build) void {
     });
     huggingface_mod.addImport("provider", provider_mod);
     huggingface_mod.addImport("provider-utils", provider_utils_mod);
-
-    // OpenAI Compatible provider
-    const openai_compatible_mod = b.addModule("openai-compatible", .{
-        .root_source_file = b.path("packages/openai-compatible/src/index.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    openai_compatible_mod.addImport("provider", provider_mod);
-    openai_compatible_mod.addImport("provider-utils", provider_utils_mod);
 
     // ElevenLabs provider
     const elevenlabs_mod = b.addModule("elevenlabs", .{
@@ -330,6 +332,48 @@ pub fn build(b: *std.Build) void {
     anthropic_tests.root_module.addImport("provider", provider_mod);
     anthropic_tests.root_module.addImport("provider-utils", provider_utils_mod);
     test_step.dependOn(&b.addRunArtifact(anthropic_tests).step);
+
+    // xAI tests
+    const xai_tests = b.addTest(.{
+        .root_source_file = b.path("packages/xai/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    xai_tests.root_module.addImport("provider", provider_mod);
+    xai_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    xai_tests.root_module.addImport("openai-compatible", openai_compatible_mod);
+    test_step.dependOn(&b.addRunArtifact(xai_tests).step);
+
+    // Perplexity tests
+    const perplexity_tests = b.addTest(.{
+        .root_source_file = b.path("packages/perplexity/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    perplexity_tests.root_module.addImport("provider", provider_mod);
+    perplexity_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    perplexity_tests.root_module.addImport("openai-compatible", openai_compatible_mod);
+    test_step.dependOn(&b.addRunArtifact(perplexity_tests).step);
+
+    // ElevenLabs tests
+    const elevenlabs_tests = b.addTest(.{
+        .root_source_file = b.path("packages/elevenlabs/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    elevenlabs_tests.root_module.addImport("provider", provider_mod);
+    elevenlabs_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    test_step.dependOn(&b.addRunArtifact(elevenlabs_tests).step);
+
+    // Deepgram tests
+    const deepgram_tests = b.addTest(.{
+        .root_source_file = b.path("packages/deepgram/src/index.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    deepgram_tests.root_module.addImport("provider", provider_mod);
+    deepgram_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    test_step.dependOn(&b.addRunArtifact(deepgram_tests).step);
 
     // Example executable
     const example = b.addExecutable(.{

@@ -225,3 +225,118 @@ test "GroqProvider transcription model" {
     const model = provider.transcriptionModel("whisper-large-v3-turbo");
     try std.testing.expectEqualStrings("whisper-large-v3-turbo", model.getModelId());
 }
+
+test "GroqProvider initialization with default settings" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroq(allocator);
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("groq", provider.getProvider());
+    try std.testing.expectEqualStrings("https://api.groq.com/openai/v1", provider.base_url);
+}
+
+test "GroqProvider initialization with custom base URL" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroqWithSettings(allocator, .{
+        .base_url = "https://custom.groq.com/v2",
+    });
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("https://custom.groq.com/v2", provider.base_url);
+}
+
+test "GroqProvider specification version" {
+    try std.testing.expectEqualStrings("v3", GroqProvider.specification_version);
+}
+
+test "GroqProvider chat alias for language model" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroq(allocator);
+    defer provider.deinit();
+
+    const model1 = provider.chat("llama-3.3-70b-versatile");
+    const model2 = provider.languageModel("llama-3.3-70b-versatile");
+
+    try std.testing.expectEqualStrings(model1.getModelId(), model2.getModelId());
+    try std.testing.expectEqualStrings(model1.getProvider(), model2.getProvider());
+}
+
+test "GroqProvider transcription alias" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroq(allocator);
+    defer provider.deinit();
+
+    const model1 = provider.transcription("whisper-large-v3");
+    const model2 = provider.transcriptionModel("whisper-large-v3");
+
+    try std.testing.expectEqualStrings(model1.getModelId(), model2.getModelId());
+}
+
+test "GroqProvider buildConfig generates correct config" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroqWithSettings(allocator, .{
+        .base_url = "https://test.groq.com",
+    });
+    defer provider.deinit();
+
+    const config = provider.buildConfig("groq.test");
+    try std.testing.expectEqualStrings("groq.test", config.provider);
+    try std.testing.expectEqualStrings("https://test.groq.com", config.base_url);
+}
+
+test "GroqProvider ProviderV3 interface language model" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroq(allocator);
+    defer provider.deinit();
+
+    const provider_v3_interface = provider.asProvider();
+    const result = provider_v3_interface.vtable.languageModel(provider_v3_interface.impl, "llama-3.3-70b-versatile");
+
+    try std.testing.expect(result == .ok);
+}
+
+test "GroqProvider ProviderV3 interface unsupported models return errors" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroq(allocator);
+    defer provider.deinit();
+
+    const provider_v3_interface = provider.asProvider();
+
+    const embedding_result = provider_v3_interface.vtable.embeddingModel(provider_v3_interface.impl, "test");
+    try std.testing.expect(embedding_result == .err);
+    try std.testing.expectEqual(error.NoSuchModel, embedding_result.err);
+
+    const image_result = provider_v3_interface.vtable.imageModel(provider_v3_interface.impl, "test");
+    try std.testing.expect(image_result == .err);
+    try std.testing.expectEqual(error.NoSuchModel, image_result.err);
+
+    const speech_result = provider_v3_interface.vtable.speechModel(provider_v3_interface.impl, "test");
+    try std.testing.expect(speech_result == .err);
+    try std.testing.expectEqual(error.NoSuchModel, speech_result.err);
+
+    const transcription_result = provider_v3_interface.vtable.transcriptionModel(provider_v3_interface.impl, "test");
+    try std.testing.expect(transcription_result == .err);
+    try std.testing.expectEqual(error.NoSuchModel, transcription_result.err);
+}
+
+test "GroqProvider multiple models can be created from same provider" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGroq(allocator);
+    defer provider.deinit();
+
+    const model1 = provider.languageModel("llama-3.3-70b-versatile");
+    const model2 = provider.languageModel("llama-3.1-8b-instant");
+    const model3 = provider.transcriptionModel("whisper-large-v3");
+
+    try std.testing.expectEqualStrings("llama-3.3-70b-versatile", model1.getModelId());
+    try std.testing.expectEqualStrings("llama-3.1-8b-instant", model2.getModelId());
+    try std.testing.expectEqualStrings("whisper-large-v3", model3.getModelId());
+}

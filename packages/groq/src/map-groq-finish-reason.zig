@@ -46,3 +46,65 @@ test "mapGroqFinishReason null" {
     const result = mapGroqFinishReason(null);
     try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, result);
 }
+
+test "mapGroqFinishReason function_call" {
+    const result = mapGroqFinishReason("function_call");
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.tool_calls, result);
+}
+
+test "mapGroqFinishReason unknown reason" {
+    const result = mapGroqFinishReason("unknown_reason");
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, result);
+}
+
+test "mapGroqFinishReason empty string" {
+    const result = mapGroqFinishReason("");
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, result);
+}
+
+test "mapGroqFinishReason case sensitivity" {
+    // Should be case sensitive
+    const result_upper = mapGroqFinishReason("STOP");
+    const result_mixed = mapGroqFinishReason("Stop");
+
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, result_upper);
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, result_mixed);
+}
+
+test "mapGroqFinishReason with whitespace" {
+    const result = mapGroqFinishReason(" stop ");
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, result);
+}
+
+test "mapGroqFinishReason all valid reasons" {
+    // Test all valid finish reasons
+    const stop = mapGroqFinishReason("stop");
+    const length = mapGroqFinishReason("length");
+    const content_filter = mapGroqFinishReason("content_filter");
+    const tool_calls = mapGroqFinishReason("tool_calls");
+    const function_call = mapGroqFinishReason("function_call");
+
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.stop, stop);
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.length, length);
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.content_filter, content_filter);
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.tool_calls, tool_calls);
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.tool_calls, function_call);
+}
+
+test "mapGroqFinishReason multiple invalid reasons" {
+    const invalid_reasons = [_][]const u8{
+        "error",
+        "timeout",
+        "cancelled",
+        "rejected",
+        "invalid",
+        "123",
+        "tool_call", // Note: singular, should be plural
+        "content-filter", // Note: hyphen instead of underscore
+    };
+
+    for (invalid_reasons) |reason| {
+        const result = mapGroqFinishReason(reason);
+        try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, result);
+    }
+}
