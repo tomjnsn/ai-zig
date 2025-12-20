@@ -37,7 +37,7 @@ pub const OpenAICompatibleChatLanguageModel = struct {
         self: *Self,
         call_options: lm.LanguageModelV3CallOptions,
         result_allocator: std.mem.Allocator,
-        callback: *const fn (?lm.LanguageModelV3.GenerateResult, ?anyerror, ?*anyopaque) void,
+        callback: *const fn (?*anyopaque, lm.LanguageModelV3.GenerateResult) void,
         callback_context: ?*anyopaque,
     ) void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
@@ -45,7 +45,7 @@ pub const OpenAICompatibleChatLanguageModel = struct {
         const request_allocator = arena.allocator();
 
         const request_body = self.buildRequestBody(request_allocator, call_options) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
@@ -53,25 +53,22 @@ pub const OpenAICompatibleChatLanguageModel = struct {
             request_allocator,
             self.config.base_url,
         ) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
         _ = url;
         _ = request_body;
 
-        const result = lm.LanguageModelV3.GenerateResult{
-            .content = &[_]lm.LanguageModelV3Content{},
-            .finish_reason = .stop,
-            .usage = .{
-                .prompt_tokens = 0,
-                .completion_tokens = 0,
-            },
-            .warnings = &[_]shared.SharedV3Warning{},
-        };
-
         _ = result_allocator;
-        callback(result, null, callback_context);
+        callback(callback_context, .{
+            .success = .{
+                .content = &[_]lm.LanguageModelV3Content{},
+                .finish_reason = .stop,
+                .usage = lm.LanguageModelV3Usage.init(),
+                .warnings = &[_]shared.SharedV3Warning{},
+            },
+        });
     }
 
     pub fn doStream(
@@ -134,10 +131,10 @@ pub const OpenAICompatibleChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "user" });
 
-                    var text_parts = std.ArrayList([]const u8).init(allocator);
+                    var text_parts = std.ArrayListUnmanaged([]const u8){};
                     for (msg.content.user) |part| {
                         switch (part) {
-                            .text => |t| try text_parts.append(t.text),
+                            .text => |t| try text_parts.append(allocator, t.text),
                             else => {},
                         }
                     }
@@ -150,12 +147,12 @@ pub const OpenAICompatibleChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "assistant" });
 
-                    var text_content = std.ArrayList([]const u8).init(allocator);
+                    var text_content = std.ArrayListUnmanaged([]const u8){};
                     var tool_calls = std.json.Array.init(allocator);
 
                     for (msg.content.assistant) |part| {
                         switch (part) {
-                            .text => |t| try text_content.append(t.text),
+                            .text => |t| try text_content.append(allocator, t.text),
                             .tool_call => |tc| {
                                 var tool_call = std.json.ObjectMap.init(allocator);
                                 try tool_call.put("id", .{ .string = tc.tool_call_id });
@@ -163,7 +160,9 @@ pub const OpenAICompatibleChatLanguageModel = struct {
 
                                 var func = std.json.ObjectMap.init(allocator);
                                 try func.put("name", .{ .string = tc.tool_name });
-                                try func.put("arguments", .{ .string = tc.input });
+                                // Stringify the JsonValue input
+                                const input_str = try tc.input.stringify(allocator);
+                                try func.put("arguments", .{ .string = input_str });
                                 try tool_call.put("function", .{ .object = func });
 
                                 try tool_calls.append(.{ .object = tool_call });
@@ -246,7 +245,9 @@ pub const OpenAICompatibleChatLanguageModel = struct {
                         if (func.description) |desc| {
                             try func_obj.put("description", .{ .string = desc });
                         }
-                        try func_obj.put("parameters", func.input_schema);
+                        // Convert JsonValue to std.json.Value
+                        const params_std_json = try func.input_schema.toStdJson(allocator);
+                        try func_obj.put("parameters", params_std_json);
 
                         try tool_obj.put("function", .{ .object = func_obj });
                         try tools_array.append(.{ .object = tool_obj });
@@ -272,17 +273,28 @@ pub const OpenAICompatibleChatLanguageModel = struct {
         .doStream = doStreamVtable,
         .getModelId = getModelIdVtable,
         .getProvider = getProviderVtable,
+        .getSupportedUrls = getSupportedUrlsVtable,
     };
 
     fn doGenerateVtable(
         impl: *anyopaque,
         call_options: lm.LanguageModelV3CallOptions,
         result_allocator: std.mem.Allocator,
-        callback: *const fn (?lm.LanguageModelV3.GenerateResult, ?anyerror, ?*anyopaque) void,
+        callback: *const fn (?*anyopaque, lm.LanguageModelV3.GenerateResult) void,
         callback_context: ?*anyopaque,
     ) void {
         const self: *Self = @ptrCast(@alignCast(impl));
         self.doGenerate(call_options, result_allocator, callback, callback_context);
+    }
+
+    fn getSupportedUrlsVtable(
+        impl: *anyopaque,
+        allocator: std.mem.Allocator,
+        callback: *const fn (?*anyopaque, lm.LanguageModelV3.SupportedUrlsResult) void,
+        ctx: ?*anyopaque,
+    ) void {
+        _ = impl;
+        callback(ctx, .{ .success = std.StringHashMap([]const []const u8).init(allocator) });
     }
 
     fn doStreamVtable(

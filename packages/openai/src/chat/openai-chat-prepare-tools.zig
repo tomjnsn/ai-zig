@@ -29,7 +29,7 @@ pub fn prepareChatTools(
     allocator: std.mem.Allocator,
     options: PrepareToolsOptions,
 ) !PrepareToolsResult {
-    var warnings = std.ArrayList(shared.SharedV3Warning).init(allocator);
+    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
 
     // Convert tools
     var openai_tools: ?[]api.OpenAIChatRequest.Tool = null;

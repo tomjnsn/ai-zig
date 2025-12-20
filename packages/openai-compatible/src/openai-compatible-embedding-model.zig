@@ -35,24 +35,39 @@ pub const OpenAICompatibleEmbeddingModel = struct {
         return self.config.provider;
     }
 
-    pub fn getMaxEmbeddingsPerCall(self: *const Self) usize {
+    pub fn getMaxEmbeddingsPerCall(
+        self: *const Self,
+        callback: *const fn (?*anyopaque, ?u32) void,
+        ctx: ?*anyopaque,
+    ) void {
         _ = self;
-        return max_embeddings_per_call;
+        callback(ctx, @as(u32, @intCast(max_embeddings_per_call)));
+    }
+
+    pub fn getSupportsParallelCalls(
+        self: *const Self,
+        callback: *const fn (?*anyopaque, bool) void,
+        ctx: ?*anyopaque,
+    ) void {
+        _ = self;
+        callback(ctx, supports_parallel_calls);
     }
 
     pub fn doEmbed(
         self: *Self,
-        values: []const []const u8,
+        options: embedding.EmbeddingModelCallOptions,
         result_allocator: std.mem.Allocator,
-        callback: *const fn (?embedding.EmbeddingModelV3.EmbedResult, ?anyerror, ?*anyopaque) void,
+        callback: *const fn (?*anyopaque, embedding.EmbeddingModelV3.EmbedResult) void,
         callback_context: ?*anyopaque,
     ) void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
         const request_allocator = arena.allocator();
 
+        const values = options.values;
+
         if (values.len > max_embeddings_per_call) {
-            callback(null, error.TooManyEmbeddingValues, callback_context);
+            callback(callback_context, .{ .failure = error.TooManyEmbeddingValues });
             return;
         }
 
@@ -60,52 +75,53 @@ pub const OpenAICompatibleEmbeddingModel = struct {
             request_allocator,
             self.config.base_url,
         ) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
         var body = std.json.ObjectMap.init(request_allocator);
         body.put("model", .{ .string = self.model_id }) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
         var input = std.json.Array.init(request_allocator);
         for (values) |value| {
             input.append(.{ .string = value }) catch |err| {
-                callback(null, err, callback_context);
+                callback(callback_context, .{ .failure = err });
                 return;
             };
         }
         body.put("input", .{ .array = input }) catch |err| {
-            callback(null, err, callback_context);
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
         _ = url;
 
-        const embeddings = result_allocator.alloc([]f32, values.len) catch |err| {
-            callback(null, err, callback_context);
+        const embeddings_array = result_allocator.alloc(embedding.EmbeddingModelV3Embedding, values.len) catch |err| {
+            callback(callback_context, .{ .failure = err });
             return;
         };
 
         const dimensions: usize = 1536;
-        for (embeddings, 0..) |*emb, i| {
+        for (embeddings_array, 0..) |*emb, i| {
             _ = i;
-            emb.* = result_allocator.alloc(f32, dimensions) catch |err| {
-                callback(null, err, callback_context);
+            const embedding_values = result_allocator.alloc(f32, dimensions) catch |err| {
+                callback(callback_context, .{ .failure = err });
                 return;
             };
-            @memset(emb.*, 0.0);
+            @memset(embedding_values, 0.0);
+            emb.* = embedding_values;
         }
 
-        const result = embedding.EmbeddingModelV3.EmbedResult{
-            .embeddings = embeddings,
-            .usage = null,
-            .warnings = &[_]shared.SharedV3Warning{},
-        };
-
-        callback(result, null, callback_context);
+        callback(callback_context, .{
+            .success = .{
+                .embeddings = embeddings_array,
+                .usage = null,
+                .warnings = &[_]shared.SharedV3Warning{},
+            },
+        });
     }
 
     pub fn asEmbeddingModel(self: *Self) embedding.EmbeddingModelV3 {
@@ -120,17 +136,18 @@ pub const OpenAICompatibleEmbeddingModel = struct {
         .getModelId = getModelIdVtable,
         .getProvider = getProviderVtable,
         .getMaxEmbeddingsPerCall = getMaxEmbeddingsPerCallVtable,
+        .getSupportsParallelCalls = getSupportsParallelCallsVtable,
     };
 
     fn doEmbedVtable(
         impl: *anyopaque,
-        values: []const []const u8,
+        options: embedding.EmbeddingModelCallOptions,
         result_allocator: std.mem.Allocator,
-        callback: *const fn (?embedding.EmbeddingModelV3.EmbedResult, ?anyerror, ?*anyopaque) void,
+        callback: *const fn (?*anyopaque, embedding.EmbeddingModelV3.EmbedResult) void,
         callback_context: ?*anyopaque,
     ) void {
         const self: *Self = @ptrCast(@alignCast(impl));
-        self.doEmbed(values, result_allocator, callback, callback_context);
+        self.doEmbed(options, result_allocator, callback, callback_context);
     }
 
     fn getModelIdVtable(impl: *anyopaque) []const u8 {
@@ -143,9 +160,22 @@ pub const OpenAICompatibleEmbeddingModel = struct {
         return self.getProvider();
     }
 
-    fn getMaxEmbeddingsPerCallVtable(impl: *anyopaque) usize {
+    fn getMaxEmbeddingsPerCallVtable(
+        impl: *anyopaque,
+        callback: *const fn (?*anyopaque, ?u32) void,
+        ctx: ?*anyopaque,
+    ) void {
         const self: *Self = @ptrCast(@alignCast(impl));
-        return self.getMaxEmbeddingsPerCall();
+        self.getMaxEmbeddingsPerCall(callback, ctx);
+    }
+
+    fn getSupportsParallelCallsVtable(
+        impl: *anyopaque,
+        callback: *const fn (?*anyopaque, bool) void,
+        ctx: ?*anyopaque,
+    ) void {
+        const self: *Self = @ptrCast(@alignCast(impl));
+        self.getSupportsParallelCalls(callback, ctx);
     }
 };
 

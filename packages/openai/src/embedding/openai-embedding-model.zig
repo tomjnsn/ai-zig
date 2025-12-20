@@ -228,7 +228,7 @@ pub const EmbedResultOk = struct {
 
 /// Serialize request to JSON
 fn serializeRequest(allocator: std.mem.Allocator, request: api.OpenAITextEmbeddingRequest) ![]const u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
+    var buffer = std.array_list.Managed(u8).init(allocator);
     try std.json.stringify(request, .{}, buffer.writer());
     return buffer.toOwnedSlice();
 }

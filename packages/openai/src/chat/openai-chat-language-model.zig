@@ -78,7 +78,7 @@ pub const OpenAIChatLanguageModel = struct {
         result_allocator: std.mem.Allocator,
         call_options: lm.LanguageModelV3CallOptions,
     ) !GenerateResultOk {
-        var all_warnings = std.ArrayList(shared.SharedV3Warning).init(request_allocator);
+        var all_warnings = std.array_list.Managed(shared.SharedV3Warning).init(request_allocator);
 
         // Check for unsupported features
         if (call_options.top_k != null) {
@@ -205,7 +205,7 @@ pub const OpenAIChatLanguageModel = struct {
         const response = parsed.value;
 
         // Extract content
-        var content = std.ArrayList(lm.LanguageModelV3Content).init(result_allocator);
+        var content = std.array_list.Managed(lm.LanguageModelV3Content).init(result_allocator);
 
         if (response.choices.len > 0) {
             const choice = response.choices[0];
@@ -299,7 +299,7 @@ pub const OpenAIChatLanguageModel = struct {
         call_options: lm.LanguageModelV3CallOptions,
         callbacks: provider_utils.StreamCallbacks(lm.LanguageModelV3StreamPart),
     ) !void {
-        var all_warnings = std.ArrayList(shared.SharedV3Warning).init(request_allocator);
+        var all_warnings = std.array_list.Managed(shared.SharedV3Warning).init(request_allocator);
 
         // Check for unsupported features
         if (call_options.top_k != null) {
@@ -393,7 +393,7 @@ pub const OpenAIChatLanguageModel = struct {
         var stream_state = StreamState{
             .callbacks = callbacks,
             .result_allocator = result_allocator,
-            .tool_calls = std.ArrayList(ToolCallState).init(request_allocator),
+            .tool_calls = std.array_list.Managed(ToolCallState).init(request_allocator),
             .is_text_active = false,
             .finish_reason = .unknown,
         };
@@ -598,7 +598,7 @@ const StreamState = struct {
             try self.tool_calls.append(.{
                 .id = "",
                 .name = "",
-                .arguments = std.ArrayList(u8).init(self.result_allocator),
+                .arguments = std.array_list.Managed(u8).init(self.result_allocator),
                 .has_finished = false,
             });
         }
@@ -687,7 +687,7 @@ fn isValidJson(data: []const u8) bool {
 
 /// Serialize request to JSON
 fn serializeRequest(allocator: std.mem.Allocator, request: api.OpenAIChatRequest) ![]const u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
+    var buffer = std.array_list.Managed(u8).init(allocator);
     try std.json.stringify(request, .{}, buffer.writer());
     return buffer.toOwnedSlice();
 }

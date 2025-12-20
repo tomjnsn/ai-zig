@@ -32,8 +32,8 @@ pub fn convertToOpenAIChatMessages(
     allocator: std.mem.Allocator,
     options: ConvertOptions,
 ) !ConvertResult {
-    var messages = std.ArrayList(api.OpenAIChatRequest.RequestMessage).init(allocator);
-    var warnings = std.ArrayList(shared.SharedV3Warning).init(allocator);
+    var messages = std.array_list.Managed(api.OpenAIChatRequest.RequestMessage).init(allocator);
+    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
 
     for (options.prompt) |msg| {
         const converted = try convertMessage(allocator, msg, options.system_message_mode, &warnings);
@@ -107,7 +107,7 @@ fn convertMessage(
         .assistant => {
             const parts = message.content.assistant;
             var text_content: ?[]const u8 = null;
-            var tool_calls = std.ArrayList(api.OpenAIChatResponse.ToolCall).init(allocator);
+            var tool_calls = std.array_list.Managed(api.OpenAIChatResponse.ToolCall).init(allocator);
 
             for (parts) |part| {
                 switch (part) {

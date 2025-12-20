@@ -78,7 +78,7 @@ pub const OpenAIImageModel = struct {
         result_allocator: std.mem.Allocator,
         options: GenerateOptions,
     ) !GenerateResultOk {
-        var warnings = std.ArrayList(shared.SharedV3Warning).init(request_allocator);
+        var warnings = std.array_list.Managed(shared.SharedV3Warning).init(request_allocator);
 
         // Check for unsupported features
         if (options.aspect_ratio != null) {
@@ -264,7 +264,7 @@ pub const GenerateResultOk = struct {
 
 /// Serialize request to JSON
 fn serializeRequest(allocator: std.mem.Allocator, request: api.OpenAIImageGenerationRequest) ![]const u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
+    var buffer = std.array_list.Managed(u8).init(allocator);
     try std.json.stringify(request, .{}, buffer.writer());
     return buffer.toOwnedSlice();
 }

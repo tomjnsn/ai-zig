@@ -73,7 +73,7 @@ pub const OpenAITranscriptionModel = struct {
         result_allocator: std.mem.Allocator,
         options: GenerateOptions,
     ) !GenerateResultOk {
-        const warnings = std.ArrayList(shared.SharedV3Warning).init(request_allocator);
+        const warnings = std.array_list.Managed(shared.SharedV3Warning).init(request_allocator);
         _ = warnings;
 
         // Determine response format
@@ -100,7 +100,7 @@ pub const OpenAITranscriptionModel = struct {
         const http_client = self.config.http_client orelse return error.NoHttpClient;
 
         // Build multipart form data
-        var form_parts = std.ArrayList(FormPart).init(request_allocator);
+        var form_parts = std.array_list.Managed(FormPart).init(request_allocator);
 
         // Add model
         try form_parts.append(.{
@@ -273,7 +273,7 @@ const FormPart = struct {
 
 /// Build multipart form body
 fn buildMultipartBody(allocator: std.mem.Allocator, parts: []const FormPart, boundary: []const u8) ![]const u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
+    var buffer = std.array_list.Managed(u8).init(allocator);
     const writer = buffer.writer();
 
     for (parts) |part| {
