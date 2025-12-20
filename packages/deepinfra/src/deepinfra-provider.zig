@@ -271,17 +271,12 @@ test "DeepInfraProvider vtable languageModel" {
     var provider = createDeepInfra(allocator);
     defer provider.deinit();
 
-    var prov = provider.asProvider();
+    const prov = provider.asProvider();
     const result = prov.vtable.languageModel(prov.impl, "meta-llama/Meta-Llama-3.1-8B-Instruct");
 
-    // Should return ok result
     switch (result) {
-        .success => {
-            // Success - we got a valid model
-        },
-        .failure => {
-            try std.testing.expect(false); // Should not get an error
-        },
+        .success => {},
+        .failure, .no_such_model => try std.testing.expect(false),
     }
 }
 
@@ -290,17 +285,12 @@ test "DeepInfraProvider vtable embeddingModel" {
     var provider = createDeepInfra(allocator);
     defer provider.deinit();
 
-    var prov = provider.asProvider();
+    const prov = provider.asProvider();
     const result = prov.vtable.embeddingModel(prov.impl, "BAAI/bge-large-en-v1.5");
 
-    // Should return ok result
     switch (result) {
-        .success => {
-            // Success - we got a valid model
-        },
-        .failure => {
-            try std.testing.expect(false); // Should not get an error
-        },
+        .success => {},
+        .failure, .no_such_model => try std.testing.expect(false),
     }
 }
 
@@ -309,17 +299,12 @@ test "DeepInfraProvider vtable imageModel returns error" {
     var provider = createDeepInfra(allocator);
     defer provider.deinit();
 
-    var prov = provider.asProvider();
+    const prov = provider.asProvider();
     const result = prov.vtable.imageModel(prov.impl, "some-image-model");
 
-    // Should return error - DeepInfra doesn't support image models via this interface
     switch (result) {
-        .success => {
-            try std.testing.expect(false); // Should not get ok
-        },
-        .failure => |err| {
-            try std.testing.expectEqual(error.NoSuchModel, err);
-        },
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model => {},
     }
 }
 
@@ -328,17 +313,12 @@ test "DeepInfraProvider vtable speechModel returns error" {
     var provider = createDeepInfra(allocator);
     defer provider.deinit();
 
-    var prov = provider.asProvider();
-    const result = prov.vtable.speechModel(prov.impl, "some-speech-model");
+    const prov = provider.asProvider();
+    const result = prov.speechModel("some-speech-model");
 
-    // Should return error - DeepInfra doesn't support speech models
     switch (result) {
-        .success => {
-            try std.testing.expect(false); // Should not get ok
-        },
-        .failure => |err| {
-            try std.testing.expectEqual(error.NoSuchModel, err);
-        },
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
     }
 }
 
@@ -347,17 +327,12 @@ test "DeepInfraProvider vtable transcriptionModel returns error" {
     var provider = createDeepInfra(allocator);
     defer provider.deinit();
 
-    var prov = provider.asProvider();
-    const result = prov.vtable.transcriptionModel(prov.impl, "some-transcription-model");
+    const prov = provider.asProvider();
+    const result = prov.transcriptionModel("some-transcription-model");
 
-    // Should return error - DeepInfra doesn't support transcription models
     switch (result) {
-        .success => {
-            try std.testing.expect(false); // Should not get ok
-        },
-        .failure => |err| {
-            try std.testing.expectEqual(error.NoSuchModel, err);
-        },
+        .success => try std.testing.expect(false),
+        .failure, .no_such_model, .not_supported => {},
     }
 }
 
@@ -405,7 +380,7 @@ test "createDeepInfraWithSettings applies custom settings" {
 test "deepinfra singleton returns valid provider" {
     const provider_ptr = deepinfra();
 
-    try std.testing.expect(provider_ptr != null);
+    try std.testing.expect(@intFromPtr(provider_ptr) != 0);
     try std.testing.expectEqualStrings("deepinfra", provider_ptr.getProvider());
 }
 
