@@ -187,6 +187,7 @@ test "Tool creation" {
     const allocator = std.testing.allocator;
 
     var params = std.json.ObjectMap.init(allocator);
+    defer params.deinit();
     try params.put("type", std.json.Value{ .string = "object" });
 
     const tool = Tool.create(.{
