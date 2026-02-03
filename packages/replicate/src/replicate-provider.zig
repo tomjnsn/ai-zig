@@ -1,11 +1,12 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 
 pub const ReplicateProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// Replicate Image Model
@@ -114,6 +115,19 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("REPLICATE_API_TOKEN");
 }
 
+/// Get headers for API requests. Caller owns the returned HashMap.
+pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    headers.put("Content-Type", "application/json") catch {};
+
+    if (getApiKeyFromEnv()) |api_key| {
+        const auth_header = std.fmt.allocPrint(allocator, "Token {s}", .{api_key}) catch return headers;
+        headers.put("Authorization", auth_header) catch {};
+    }
+
+    return headers;
+}
+
 pub fn createReplicate(allocator: std.mem.Allocator) ReplicateProvider {
     return ReplicateProvider.init(allocator, .{});
 }
@@ -123,15 +137,6 @@ pub fn createReplicateWithSettings(
     settings: ReplicateProviderSettings,
 ) ReplicateProvider {
     return ReplicateProvider.init(allocator, settings);
-}
-
-var default_provider: ?ReplicateProvider = null;
-
-pub fn replicate() *ReplicateProvider {
-    if (default_provider == null) {
-        default_provider = createReplicate(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 // ============================================================================

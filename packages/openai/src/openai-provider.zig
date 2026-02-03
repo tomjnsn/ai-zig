@@ -247,14 +247,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("OPENAI_API_KEY");
 }
 
-/// Headers function for config
+/// Headers function for config.
+/// Caller owns the returned HashMap and must call deinit() when done.
 fn getHeadersFn(config: *const config_mod.OpenAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add authorization header
     if (getApiKeyFromEnv()) |api_key| {
-        const auth_value = std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key}) catch "Bearer ";
+        const auth_value = std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key}) catch return headers;
         headers.put("Authorization", auth_value) catch {};
     }
 

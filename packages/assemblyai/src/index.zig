@@ -18,7 +18,6 @@ pub const TranscriptionModels = provider.TranscriptionModels;
 pub const TranscriptionOptions = provider.TranscriptionOptions;
 pub const createAssemblyAI = provider.createAssemblyAI;
 pub const createAssemblyAIWithSettings = provider.createAssemblyAIWithSettings;
-pub const assemblyai = provider.assemblyai;
 
 test {
     @import("std").testing.refAllDecls(@This());

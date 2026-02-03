@@ -10,7 +10,6 @@ pub const DeepInfraProvider = provider.DeepInfraProvider;
 pub const DeepInfraProviderSettings = provider.DeepInfraProviderSettings;
 pub const createDeepInfra = provider.createDeepInfra;
 pub const createDeepInfraWithSettings = provider.createDeepInfraWithSettings;
-pub const deepinfra = provider.deepinfra;
 
 test {
     @import("std").testing.refAllDecls(@This());

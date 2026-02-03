@@ -13,7 +13,6 @@ pub const GoogleVertexProvider = provider.GoogleVertexProvider;
 pub const GoogleVertexProviderSettings = provider.GoogleVertexProviderSettings;
 pub const createVertex = provider.createVertex;
 pub const createVertexWithSettings = provider.createVertexWithSettings;
-pub const vertex = provider.vertex;
 
 // Configuration
 pub const config = @import("google-vertex-config.zig");

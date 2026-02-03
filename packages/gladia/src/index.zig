@@ -17,7 +17,6 @@ pub const TranscriptionModels = provider.TranscriptionModels;
 pub const TranscriptionOptions = provider.TranscriptionOptions;
 pub const createGladia = provider.createGladia;
 pub const createGladiaWithSettings = provider.createGladiaWithSettings;
-pub const gladia = provider.gladia;
 
 test {
     @import("std").testing.refAllDecls(@This());

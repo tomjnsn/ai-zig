@@ -1,4 +1,6 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
+const HttpClient = provider_utils.HttpClient;
 
 /// Mistral API configuration
 pub const MistralConfig = struct {
@@ -8,11 +10,12 @@ pub const MistralConfig = struct {
     /// Base URL for API calls
     base_url: []const u8 = "https://api.mistral.ai/v1",
 
-    /// Function to get headers
-    headers_fn: ?*const fn (*const MistralConfig) std.StringHashMap([]const u8) = null,
+    /// Function to get headers.
+    /// Caller owns the returned HashMap and must call deinit() when done.
+    headers_fn: ?*const fn (*const MistralConfig, std.mem.Allocator) std.StringHashMap([]const u8) = null,
 
     /// HTTP client (optional)
-    http_client: ?*anyopaque = null,
+    http_client: ?HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,

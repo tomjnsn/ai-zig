@@ -64,7 +64,11 @@ pub const HeaderIterator = struct {
 
                     // Skip if already seen (earlier takes precedence in reverse order)
                     if (!self.seen.contains(header.name)) {
-                        self.seen.put(header.name, {}) catch continue;
+                        self.seen.put(header.name, {}) catch {
+                            // OOM during iteration - stop iteration to avoid potential duplicates
+                            std.log.err("HeaderIterator: failed to track seen header '{s}', stopping iteration", .{header.name});
+                            return null;
+                        };
                         return header;
                     }
                 }

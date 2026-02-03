@@ -1,11 +1,12 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 
 pub const ElevenLabsProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// ElevenLabs Speech Model
@@ -147,6 +148,18 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("ELEVENLABS_API_KEY");
 }
 
+/// Get headers for API requests. Caller owns the returned HashMap.
+pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    headers.put("Content-Type", "application/json") catch {};
+
+    if (getApiKeyFromEnv()) |api_key| {
+        headers.put("xi-api-key", api_key) catch {};
+    }
+
+    return headers;
+}
+
 pub fn createElevenLabs(allocator: std.mem.Allocator) ElevenLabsProvider {
     return ElevenLabsProvider.init(allocator, .{});
 }
@@ -156,15 +169,6 @@ pub fn createElevenLabsWithSettings(
     settings: ElevenLabsProviderSettings,
 ) ElevenLabsProvider {
     return ElevenLabsProvider.init(allocator, settings);
-}
-
-var default_provider: ?ElevenLabsProvider = null;
-
-pub fn elevenlabs() *ElevenLabsProvider {
-    if (default_provider == null) {
-        default_provider = createElevenLabs(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 // ============================================================================
@@ -462,14 +466,6 @@ test "getApiKeyFromEnv returns null when not set" {
     // We can't assert the value since it depends on the environment
     // but we can test that the function doesn't crash
     _ = api_key;
-}
-
-test "elevenlabs default provider singleton" {
-    const provider1 = elevenlabs();
-    const provider2 = elevenlabs();
-
-    // Both calls should return the same instance
-    try std.testing.expect(provider1 == provider2);
 }
 
 test "createElevenLabs and createElevenLabsWithSettings are equivalent with empty settings" {

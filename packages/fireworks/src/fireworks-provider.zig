@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 const openai_compat = @import("openai-compatible");
 
@@ -6,7 +7,7 @@ pub const FireworksProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 pub const FireworksProvider = struct {
@@ -112,14 +113,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("FIREWORKS_API_KEY");
 }
 
-fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig) std.StringHashMap([]const u8) {
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
     headers.put("Content-Type", "application/json") catch {};
 
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -140,14 +142,6 @@ pub fn createFireworksWithSettings(
     return FireworksProvider.init(allocator, settings);
 }
 
-var default_provider: ?FireworksProvider = null;
-
-pub fn fireworks() *FireworksProvider {
-    if (default_provider == null) {
-        default_provider = createFireworks(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 // ============================================================================
 // Unit Tests
@@ -428,7 +422,7 @@ test "getHeadersFn returns valid headers" {
         .base_url = "https://api.fireworks.ai/inference/v1",
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     const content_type = headers.get("Content-Type");
@@ -444,7 +438,7 @@ test "getHeadersFn includes auth header when API key available" {
         .base_url = "https://api.fireworks.ai/inference/v1",
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     // At minimum, Content-Type should always be present
@@ -527,17 +521,20 @@ test "FireworksProvider with very long model ID" {
 // Default Provider Tests
 // ============================================================================
 
-test "fireworks singleton function returns provider" {
-    const provider = fireworks();
+test "fireworks provider returns valid provider" {
+    var provider = createFireworks(std.testing.allocator);
+    defer provider.deinit();
     try std.testing.expectEqualStrings("fireworks", provider.getProvider());
 }
 
-test "fireworks singleton returns same instance" {
-    const provider1 = fireworks();
-    const provider2 = fireworks();
+test "fireworks providers have consistent values" {
+    var provider1 = createFireworks(std.testing.allocator);
+    defer provider1.deinit();
+    var provider2 = createFireworks(std.testing.allocator);
+    defer provider2.deinit();
 
-    // Both should point to the same instance
-    try std.testing.expectEqual(provider1, provider2);
+    // Both should have the same provider name
+    try std.testing.expectEqualStrings(provider1.getProvider(), provider2.getProvider());
 }
 
 // ============================================================================

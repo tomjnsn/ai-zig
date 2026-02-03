@@ -13,7 +13,6 @@ pub const SpeechOptions = provider.SpeechOptions;
 pub const Prosody = provider.Prosody;
 pub const createHume = provider.createHume;
 pub const createHumeWithSettings = provider.createHumeWithSettings;
-pub const hume = provider.hume;
 
 test {
     @import("std").testing.refAllDecls(@This());

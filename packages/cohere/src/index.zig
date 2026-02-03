@@ -13,7 +13,6 @@ pub const CohereProvider = provider.CohereProvider;
 pub const CohereProviderSettings = provider.CohereProviderSettings;
 pub const createCohere = provider.createCohere;
 pub const createCohereWithSettings = provider.createCohereWithSettings;
-pub const cohere = provider.cohere;
 
 // Configuration
 pub const config = @import("cohere-config.zig");

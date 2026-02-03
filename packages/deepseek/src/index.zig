@@ -12,7 +12,6 @@ pub const DeepSeekProvider = provider.DeepSeekProvider;
 pub const DeepSeekProviderSettings = provider.DeepSeekProviderSettings;
 pub const createDeepSeek = provider.createDeepSeek;
 pub const createDeepSeekWithSettings = provider.createDeepSeekWithSettings;
-pub const deepseek = provider.deepseek;
 
 // Configuration
 pub const config = @import("deepseek-config.zig");

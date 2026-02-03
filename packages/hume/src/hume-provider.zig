@@ -1,11 +1,12 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 
 pub const HumeProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// Hume Speech Model (Empathic Voice Interface)
@@ -208,6 +209,18 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("HUME_API_KEY");
 }
 
+/// Get headers for API requests. Caller owns the returned HashMap.
+pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    headers.put("Content-Type", "application/json") catch {};
+
+    if (getApiKeyFromEnv()) |api_key| {
+        headers.put("X-Hume-Api-Key", api_key) catch {};
+    }
+
+    return headers;
+}
+
 pub fn createHume(allocator: std.mem.Allocator) HumeProvider {
     return HumeProvider.init(allocator, .{});
 }
@@ -217,15 +230,6 @@ pub fn createHumeWithSettings(
     settings: HumeProviderSettings,
 ) HumeProvider {
     return HumeProvider.init(allocator, settings);
-}
-
-var default_provider: ?HumeProvider = null;
-
-pub fn hume() *HumeProvider {
-    if (default_provider == null) {
-        default_provider = createHume(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 test "HumeProvider basic" {

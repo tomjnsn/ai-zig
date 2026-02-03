@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 
 const config_mod = @import("groq-config.zig");
@@ -17,7 +18,7 @@ pub const GroqProviderSettings = struct {
     headers: ?std.StringHashMap([]const u8) = null,
 
     /// HTTP client
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,
@@ -182,17 +183,6 @@ pub fn createGroqWithSettings(
     settings: GroqProviderSettings,
 ) GroqProvider {
     return GroqProvider.init(allocator, settings);
-}
-
-/// Default Groq provider instance (created lazily)
-var default_provider: ?GroqProvider = null;
-
-/// Get the default Groq provider
-pub fn groq() *GroqProvider {
-    if (default_provider == null) {
-        default_provider = createGroq(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 test "GroqProvider basic" {

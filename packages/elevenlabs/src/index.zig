@@ -12,7 +12,6 @@ pub const ElevenLabsSpeechModel = provider.ElevenLabsSpeechModel;
 pub const ElevenLabsTranscriptionModel = provider.ElevenLabsTranscriptionModel;
 pub const createElevenLabs = provider.createElevenLabs;
 pub const createElevenLabsWithSettings = provider.createElevenLabsWithSettings;
-pub const elevenlabs = provider.elevenlabs;
 
 test {
     @import("std").testing.refAllDecls(@This());

@@ -1,11 +1,12 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 
 pub const AssemblyAIProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// AssemblyAI Transcription Model IDs
@@ -265,6 +266,18 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("ASSEMBLYAI_API_KEY");
 }
 
+/// Get headers for API requests. Caller owns the returned HashMap.
+pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    headers.put("Content-Type", "application/json") catch {};
+
+    if (getApiKeyFromEnv()) |api_key| {
+        headers.put("Authorization", api_key) catch {};
+    }
+
+    return headers;
+}
+
 pub fn createAssemblyAI(allocator: std.mem.Allocator) AssemblyAIProvider {
     return AssemblyAIProvider.init(allocator, .{});
 }
@@ -274,15 +287,6 @@ pub fn createAssemblyAIWithSettings(
     settings: AssemblyAIProviderSettings,
 ) AssemblyAIProvider {
     return AssemblyAIProvider.init(allocator, settings);
-}
-
-var default_provider: ?AssemblyAIProvider = null;
-
-pub fn assemblyai() *AssemblyAIProvider {
-    if (default_provider == null) {
-        default_provider = createAssemblyAI(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 test "AssemblyAIProvider basic" {

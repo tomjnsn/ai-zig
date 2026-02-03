@@ -1,4 +1,6 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
+const HttpClient = provider_utils.HttpClient;
 
 /// Configuration for Amazon Bedrock API
 pub const BedrockConfig = struct {
@@ -11,11 +13,12 @@ pub const BedrockConfig = struct {
     /// AWS region
     region: []const u8 = "us-east-1",
 
-    /// Function to get headers
-    headers_fn: ?*const fn (*const BedrockConfig) std.StringHashMap([]const u8) = null,
+    /// Function to get headers.
+    /// Caller owns the returned HashMap and must call deinit() when done.
+    headers_fn: ?*const fn (*const BedrockConfig, std.mem.Allocator) std.StringHashMap([]const u8) = null,
 
     /// Custom HTTP client
-    http_client: ?*anyopaque = null,
+    http_client: ?HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,

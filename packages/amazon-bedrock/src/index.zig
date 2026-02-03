@@ -18,7 +18,6 @@ pub const AmazonBedrockProvider = provider.AmazonBedrockProvider;
 pub const AmazonBedrockProviderSettings = provider.AmazonBedrockProviderSettings;
 pub const createAmazonBedrock = provider.createAmazonBedrock;
 pub const createAmazonBedrockWithSettings = provider.createAmazonBedrockWithSettings;
-pub const bedrock = provider.bedrock;
 
 // Configuration
 pub const config = @import("bedrock-config.zig");

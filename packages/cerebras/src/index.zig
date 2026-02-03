@@ -9,7 +9,6 @@ pub const CerebrasProvider = provider.CerebrasProvider;
 pub const CerebrasProviderSettings = provider.CerebrasProviderSettings;
 pub const createCerebras = provider.createCerebras;
 pub const createCerebrasWithSettings = provider.createCerebrasWithSettings;
-pub const cerebras = provider.cerebras;
 
 test {
     @import("std").testing.refAllDecls(@This());

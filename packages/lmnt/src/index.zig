@@ -11,7 +11,6 @@ pub const SpeechModels = provider.SpeechModels;
 pub const SpeechOptions = provider.SpeechOptions;
 pub const createLmnt = provider.createLmnt;
 pub const createLmntWithSettings = provider.createLmntWithSettings;
-pub const lmnt = provider.lmnt;
 
 test {
     @import("std").testing.refAllDecls(@This());

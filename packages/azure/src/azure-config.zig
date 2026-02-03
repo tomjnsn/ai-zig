@@ -16,8 +16,9 @@ pub const AzureOpenAIConfig = struct {
     /// Use deployment-based URLs
     use_deployment_based_urls: bool = false,
 
-    /// Function to get headers
-    headers_fn: ?*const fn (*const AzureOpenAIConfig) std.StringHashMap([]const u8) = null,
+    /// Function to get headers.
+    /// Caller owns the returned HashMap and must call deinit() when done.
+    headers_fn: ?*const fn (*const AzureOpenAIConfig, std.mem.Allocator) std.StringHashMap([]const u8) = null,
 
     /// Custom HTTP client
     http_client: ?HttpClient = null,

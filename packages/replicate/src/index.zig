@@ -11,7 +11,6 @@ pub const ReplicateProviderSettings = provider.ReplicateProviderSettings;
 pub const ReplicateImageModel = provider.ReplicateImageModel;
 pub const createReplicate = provider.createReplicate;
 pub const createReplicateWithSettings = provider.createReplicateWithSettings;
-pub const replicate = provider.replicate;
 
 test {
     @import("std").testing.refAllDecls(@This());

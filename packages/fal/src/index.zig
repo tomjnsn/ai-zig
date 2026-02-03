@@ -13,7 +13,6 @@ pub const FalSpeechModel = provider.FalSpeechModel;
 pub const FalTranscriptionModel = provider.FalTranscriptionModel;
 pub const createFal = provider.createFal;
 pub const createFalWithSettings = provider.createFalWithSettings;
-pub const fal = provider.fal;
 
 test {
     @import("std").testing.refAllDecls(@This());

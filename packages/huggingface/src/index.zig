@@ -9,7 +9,6 @@ pub const HuggingFaceProvider = provider.HuggingFaceProvider;
 pub const HuggingFaceProviderSettings = provider.HuggingFaceProviderSettings;
 pub const createHuggingFace = provider.createHuggingFace;
 pub const createHuggingFaceWithSettings = provider.createHuggingFaceWithSettings;
-pub const huggingface = provider.huggingface;
 
 test {
     @import("std").testing.refAllDecls(@This());

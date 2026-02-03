@@ -265,7 +265,7 @@ pub const OpenAIChatLanguageModel = struct {
         self: *const Self,
         call_options: lm.LanguageModelV3CallOptions,
         result_allocator: std.mem.Allocator,
-        callbacks: provider_utils.StreamCallbacks(lm.LanguageModelV3StreamPart),
+        callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) void {
         // Use arena for request processing
         var arena = std.heap.ArenaAllocator.init(self.allocator);
@@ -273,7 +273,7 @@ pub const OpenAIChatLanguageModel = struct {
         const request_allocator = arena.allocator();
 
         self.doStreamInternal(request_allocator, result_allocator, call_options, callbacks) catch |err| {
-            callbacks.on_error(err, callbacks.context);
+            callbacks.on_error(callbacks.ctx, err);
         };
     }
 
@@ -282,7 +282,7 @@ pub const OpenAIChatLanguageModel = struct {
         request_allocator: std.mem.Allocator,
         result_allocator: std.mem.Allocator,
         call_options: lm.LanguageModelV3CallOptions,
-        callbacks: provider_utils.StreamCallbacks(lm.LanguageModelV3StreamPart),
+        callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) !void {
         var all_warnings = std.array_list.Managed(shared.SharedV3Warning).init(request_allocator);
 
@@ -351,7 +351,7 @@ pub const OpenAIChatLanguageModel = struct {
         for (all_warnings.items, 0..) |w, i| {
             warnings_copy[i] = w;
         }
-        callbacks.on_part(.{ .stream_start = .{ .warnings = warnings_copy } }, callbacks.context);
+        callbacks.on_part(callbacks.ctx, .{ .stream_start = .{ .warnings = warnings_copy } });
 
         // Build URL
         const url = try self.config.buildUrl(request_allocator, "/chat/completions", self.model_id);
@@ -385,7 +385,7 @@ pub const OpenAIChatLanguageModel = struct {
             fn onChunk(ctx: *anyopaque, chunk: []const u8) void {
                 const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
                 state.processChunk(chunk) catch |err| {
-                    state.callbacks.on_error(err, state.callbacks.context);
+                    state.callbacks.on_error(state.callbacks.ctx, err);
                 };
             }
             fn onComplete(ctx: *anyopaque) void {
@@ -394,7 +394,7 @@ pub const OpenAIChatLanguageModel = struct {
             }
             fn onError(ctx: *anyopaque, err: anyerror) void {
                 const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.callbacks.on_error(err, state.callbacks.context);
+                state.callbacks.on_error(state.callbacks.ctx, err);
             }
         }.onChunk, struct {
             fn onComplete(ctx: *anyopaque) void {
@@ -404,7 +404,7 @@ pub const OpenAIChatLanguageModel = struct {
         }.onComplete, struct {
             fn onError(ctx: *anyopaque, err: anyerror) void {
                 const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.callbacks.on_error(err, state.callbacks.context);
+                state.callbacks.on_error(state.callbacks.ctx, err);
             }
         }.onError, &stream_state);
     }
@@ -517,7 +517,7 @@ const ToolCallState = struct {
 
 /// State for stream processing
 const StreamState = struct {
-    callbacks: provider_utils.StreamCallbacks(lm.LanguageModelV3StreamPart),
+    callbacks: lm.LanguageModelV3.StreamCallbacks,
     result_allocator: std.mem.Allocator,
     tool_calls: std.array_list.Managed(ToolCallState),
     is_text_active: bool,
@@ -534,19 +534,21 @@ const StreamState = struct {
                     continue;
                 }
 
-                const parsed = std.json.parseFromSlice(api.OpenAIChatChunk, self.result_allocator, json_data, .{}) catch continue;
+                const parsed = std.json.parseFromSlice(api.OpenAIChatChunk, self.result_allocator, json_data, .{}) catch |err| {
+                    // Report JSON parse error to caller but continue processing subsequent chunks
+                    self.callbacks.on_part(self.callbacks.ctx, .{
+                        .@"error" = .{ .err = err, .message = "Failed to parse SSE chunk JSON" },
+                    });
+                    continue;
+                };
                 const chunk = parsed.value;
 
                 // Handle error chunks
                 if (chunk.@"error") |err| {
                     self.finish_reason = .@"error";
-                    self.callbacks.on_part(.{
-                        .@"error" = .{
-                            .error_value = .{
-                                .message = err.message,
-                            },
-                        },
-                    }, self.callbacks.context);
+                    self.callbacks.on_part(self.callbacks.ctx, .{
+                        .@"error" = .{ .err = error.ApiError, .message = err.message },
+                    });
                     continue;
                 }
 
@@ -570,18 +572,18 @@ const StreamState = struct {
                 // Handle text content
                 if (delta.content) |content| {
                     if (!self.is_text_active) {
-                        self.callbacks.on_part(.{
+                        self.callbacks.on_part(self.callbacks.ctx, .{
                             .text_start = .{ .id = "0" },
-                        }, self.callbacks.context);
+                        });
                         self.is_text_active = true;
                     }
 
-                    self.callbacks.on_part(.{
+                    self.callbacks.on_part(self.callbacks.ctx, .{
                         .text_delta = .{
                             .id = "0",
                             .delta = content,
                         },
-                    }, self.callbacks.context);
+                    });
                 }
 
                 // Handle tool calls
@@ -594,14 +596,14 @@ const StreamState = struct {
                 // Handle annotations
                 if (delta.annotations) |annotations| {
                     for (annotations) |ann| {
-                        self.callbacks.on_part(.{
+                        self.callbacks.on_part(self.callbacks.ctx, .{
                             .source = .{
                                 .source_type = .url,
                                 .id = try provider_utils.generateId(self.result_allocator),
                                 .url = ann.url_citation.url,
                                 .title = ann.url_citation.title,
                             },
-                        }, self.callbacks.context);
+                        });
                     }
                 }
             }
@@ -633,43 +635,43 @@ const StreamState = struct {
                 tool_call.name = try self.result_allocator.dupe(u8, name);
 
                 // Emit tool input start
-                self.callbacks.on_part(.{
+                self.callbacks.on_part(self.callbacks.ctx, .{
                     .tool_input_start = .{
                         .id = tool_call.id,
                         .tool_name = tool_call.name,
                     },
-                }, self.callbacks.context);
+                });
             }
 
             if (func.arguments) |args| {
                 try tool_call.arguments.appendSlice(args);
 
                 // Emit tool input delta
-                self.callbacks.on_part(.{
+                self.callbacks.on_part(self.callbacks.ctx, .{
                     .tool_input_delta = .{
                         .id = tool_call.id,
                         .delta = args,
                     },
-                }, self.callbacks.context);
+                });
 
                 // Check if complete (valid JSON)
                 if (!tool_call.has_finished) {
-                    if (isValidJson(tool_call.arguments.items)) {
+                    if (isValidJson(self.result_allocator, tool_call.arguments.items)) {
                         tool_call.has_finished = true;
 
                         // Emit tool input end
-                        self.callbacks.on_part(.{
+                        self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_input_end = .{ .id = tool_call.id },
-                        }, self.callbacks.context);
+                        });
 
                         // Emit tool call
-                        self.callbacks.on_part(.{
+                        self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_call = .{
                                 .tool_call_id = tool_call.id,
                                 .tool_name = tool_call.name,
                                 .input = json_value.JsonValue.parse(self.result_allocator, tool_call.arguments.items) catch .{ .object = json_value.JsonObject.init(self.result_allocator) },
                             },
-                        }, self.callbacks.context);
+                        });
                     }
                 }
             }
@@ -679,27 +681,28 @@ const StreamState = struct {
     fn finish(self: *StreamState) void {
         // End text if active
         if (self.is_text_active) {
-            self.callbacks.on_part(.{
+            self.callbacks.on_part(self.callbacks.ctx, .{
                 .text_end = .{ .id = "0" },
-            }, self.callbacks.context);
+            });
         }
 
         // Emit finish
-        self.callbacks.on_part(.{
+        self.callbacks.on_part(self.callbacks.ctx, .{
             .finish = .{
                 .finish_reason = self.finish_reason,
                 .usage = self.usage orelse lm.LanguageModelV3Usage.init(),
             },
-        }, self.callbacks.context);
+        });
 
         // Call complete callback
-        self.callbacks.on_complete(self.callbacks.context);
+        self.callbacks.on_complete(self.callbacks.ctx, null);
     }
 };
 
 /// Check if a string is valid JSON
-fn isValidJson(data: []const u8) bool {
-    _ = std.json.parseFromSlice(std.json.Value, std.heap.page_allocator, data, .{}) catch return false;
+fn isValidJson(allocator: std.mem.Allocator, data: []const u8) bool {
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, data, .{}) catch return false;
+    defer parsed.deinit();
     return true;
 }
 

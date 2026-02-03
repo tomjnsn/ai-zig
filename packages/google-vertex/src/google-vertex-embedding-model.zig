@@ -156,7 +156,7 @@ pub const GoogleVertexEmbeddingModel = struct {
         // Get headers
         var headers = std.StringHashMap([]const u8).init(request_allocator);
         if (self.config.headers_fn) |headers_fn| {
-            headers = headers_fn(&self.config);
+            headers = headers_fn(&self.config, request_allocator);
         }
 
         _ = url;

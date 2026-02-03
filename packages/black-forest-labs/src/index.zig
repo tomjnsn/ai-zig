@@ -11,7 +11,6 @@ pub const ImageModels = provider.ImageModels;
 pub const ImageGenerationOptions = provider.ImageGenerationOptions;
 pub const createBlackForestLabs = provider.createBlackForestLabs;
 pub const createBlackForestLabsWithSettings = provider.createBlackForestLabsWithSettings;
-pub const blackForestLabs = provider.blackForestLabs;
 
 test {
     @import("std").testing.refAllDecls(@This());

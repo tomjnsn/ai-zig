@@ -32,13 +32,15 @@ packages/
 
 ### Key Design Patterns
 
-1. **Vtable Pattern**: Interface abstraction for models instead of traits. Each model type (LanguageModelV3, EmbeddingModelV3, etc.) uses vtables for runtime polymorphism.
+1. **Vtable Pattern**: Interface abstraction for models instead of traits. Each model type (LanguageModelV3, EmbeddingModelV3, etc.) uses vtables for runtime polymorphism. See "Pointer Casting and Vtables" section below.
 
 2. **Callback-based Streaming**: Non-async approach using `StreamCallbacks` with `on_part`, `on_error`, and `on_complete` callbacks.
 
 3. **Arena Allocators**: Request-scoped memory management. Use `defer arena.deinit()` for cleanup.
 
 4. **Provider Pattern**: Each provider implements `init()`, `deinit()`, `getProvider()`, and model factory methods (e.g., `languageModel()`).
+
+5. **HttpClient Interface**: Type-erased HTTP client allowing mock injection for testing. Providers accept optional `http_client: ?provider_utils.HttpClient` in settings.
 
 ### Core Types
 
@@ -70,4 +72,70 @@ defer arena.deinit();
 // Use arena.allocator() for request-scoped allocations
 ```
 
-Always document whether functions take ownership of allocations or expect the caller to manage memory.
+### Ownership Conventions
+
+- **Caller-owned**: Function returns data allocated by the passed allocator. Caller must free.
+- **Arena-owned**: Data lives until arena is deinitialized. No manual free needed.
+- **Static**: Compile-time data (string literals, const slices). Never free.
+
+### Header Functions
+
+Provider `getHeaders()` functions return `std.StringHashMap([]const u8)`. Caller owns the returned map and must call `deinit()`:
+
+```zig
+var headers = provider.getHeaders(allocator);
+defer headers.deinit();
+```
+
+## Pointer Casting and Vtables
+
+The SDK uses vtables for runtime polymorphism. This requires `@ptrCast` and `@alignCast` when converting between `*anyopaque` and concrete types.
+
+### Pattern
+
+```zig
+// Interface definition
+pub const HttpClient = struct {
+    vtable: *const VTable,
+    impl: *anyopaque,  // Type-erased implementation pointer
+
+    pub const VTable = struct {
+        request: *const fn (impl: *anyopaque, ...) void,
+    };
+
+    pub fn request(self: HttpClient, ...) void {
+        self.vtable.request(self.impl, ...);
+    }
+};
+
+// Implementation
+pub const MockHttpClient = struct {
+    // ... fields ...
+
+    pub fn asInterface(self: *MockHttpClient) HttpClient {
+        return .{
+            .vtable = &vtable,
+            .impl = self,  // Implicit cast to *anyopaque
+        };
+    }
+
+    const vtable = HttpClient.VTable{
+        .request = doRequest,
+    };
+
+    fn doRequest(impl: *anyopaque, ...) void {
+        // Cast back to concrete type - alignment is guaranteed since
+        // impl was originally a *MockHttpClient
+        const self: *MockHttpClient = @ptrCast(@alignCast(impl));
+        // ... implementation ...
+    }
+};
+```
+
+### Alignment Safety
+
+The `@alignCast` is safe when:
+1. The pointer was originally the concrete type before being cast to `*anyopaque`
+2. The vtable and impl are always paired correctly (same instance)
+
+All vtable implementations in this codebase follow this pattern, ensuring alignment is preserved through the type-erasure round-trip.

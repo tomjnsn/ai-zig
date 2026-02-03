@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 const openai_compat = @import("openai-compatible");
 
@@ -6,7 +7,7 @@ pub const XaiProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 pub const XaiProvider = struct {
@@ -98,14 +99,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("XAI_API_KEY");
 }
 
-fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig) std.StringHashMap([]const u8) {
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
     headers.put("Content-Type", "application/json") catch {};
 
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -126,14 +128,6 @@ pub fn createXaiWithSettings(
     return XaiProvider.init(allocator, settings);
 }
 
-var default_provider: ?XaiProvider = null;
-
-pub fn xai() *XaiProvider {
-    if (default_provider == null) {
-        default_provider = createXai(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 // ============================================================================
 // Unit Tests
@@ -357,7 +351,7 @@ test "XaiProviderSettings default values" {
     try std.testing.expectEqual(@as(?[]const u8, null), settings.base_url);
     try std.testing.expectEqual(@as(?[]const u8, null), settings.api_key);
     try std.testing.expectEqual(@as(?std.StringHashMap([]const u8), null), settings.headers);
-    try std.testing.expectEqual(@as(?*anyopaque, null), settings.http_client);
+    try std.testing.expect(settings.http_client == null);
 }
 
 test "XaiProviderSettings with custom values" {
@@ -457,7 +451,7 @@ test "getHeadersFn creates headers with Content-Type" {
         .http_client = null,
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     const content_type = headers.get("Content-Type");

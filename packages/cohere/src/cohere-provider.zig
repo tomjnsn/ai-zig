@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 
 const config_mod = @import("cohere-config.zig");
@@ -18,7 +19,7 @@ pub const CohereProviderSettings = struct {
     headers: ?std.StringHashMap([]const u8) = null,
 
     /// HTTP client
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,
@@ -172,10 +173,11 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("COHERE_API_KEY");
 }
 
-/// Headers function for config
-fn getHeadersFn(config: *const config_mod.CohereConfig) std.StringHashMap([]const u8) {
+/// Headers function for config.
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const config_mod.CohereConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add content-type
     headers.put("Content-Type", "application/json") catch {};
@@ -183,7 +185,7 @@ fn getHeadersFn(config: *const config_mod.CohereConfig) std.StringHashMap([]cons
     // Add authorization
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -206,16 +208,6 @@ pub fn createCohereWithSettings(
     return CohereProvider.init(allocator, settings);
 }
 
-/// Default Cohere provider instance (created lazily)
-var default_provider: ?CohereProvider = null;
-
-/// Get the default Cohere provider
-pub fn cohere() *CohereProvider {
-    if (default_provider == null) {
-        default_provider = createCohere(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 test "CohereProvider basic" {
     const allocator = std.testing.allocator;

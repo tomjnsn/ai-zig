@@ -1,7 +1,24 @@
 const std = @import("std");
 
 /// HTTP client interface for making API requests.
-/// This interface allows for different HTTP client implementations to be used.
+/// This interface allows for different HTTP client implementations to be used,
+/// enabling dependency injection for testing (via MockHttpClient) or custom
+/// HTTP backends.
+///
+/// ## Implementing a Custom HttpClient
+///
+/// 1. Create a struct with your implementation state
+/// 2. Define a static vtable pointing to your implementation functions
+/// 3. Implement an `asInterface()` method that returns `HttpClient`
+///
+/// ## Memory Safety
+///
+/// The `impl` pointer is type-erased (`*anyopaque`). Implementations must:
+/// - Store a pointer to themselves in `impl` via `asInterface()`
+/// - Cast back using `@ptrCast(@alignCast(impl))` in vtable functions
+/// - Ensure the concrete struct outlives the returned interface
+///
+/// See `MockHttpClient` and `StdHttpClient` for reference implementations.
 pub const HttpClient = struct {
     vtable: *const VTable,
     impl: *anyopaque,

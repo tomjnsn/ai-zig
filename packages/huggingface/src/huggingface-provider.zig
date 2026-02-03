@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 const openai_compat = @import("openai-compatible");
 
@@ -6,7 +7,7 @@ pub const HuggingFaceProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 pub const HuggingFaceProvider = struct {
@@ -94,14 +95,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("HUGGINGFACE_API_KEY");
 }
 
-fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig) std.StringHashMap([]const u8) {
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
     headers.put("Content-Type", "application/json") catch {};
 
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -122,14 +124,6 @@ pub fn createHuggingFaceWithSettings(
     return HuggingFaceProvider.init(allocator, settings);
 }
 
-var default_provider: ?HuggingFaceProvider = null;
-
-pub fn huggingface() *HuggingFaceProvider {
-    if (default_provider == null) {
-        default_provider = createHuggingFace(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 test "HuggingFaceProvider basic initialization" {
     const allocator = std.testing.allocator;
@@ -284,7 +278,7 @@ test "getHeadersFn creates Content-Type header" {
         .base_url = "https://test.com",
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     const content_type = headers.get("Content-Type");
@@ -297,7 +291,7 @@ test "getHeadersFn without API key in environment" {
         .base_url = "https://test.com",
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     // Should always have Content-Type
@@ -439,11 +433,13 @@ test "HuggingFaceProvider deinit is safe to call" {
     provider.deinit(); // Safe to call multiple times
 }
 
-test "huggingface singleton returns same instance" {
-    const provider1 = huggingface();
-    const provider2 = huggingface();
+test "huggingface provider returns consistent values" {
+    var provider1 = createHuggingFace(std.testing.allocator);
+    defer provider1.deinit();
+    var provider2 = createHuggingFace(std.testing.allocator);
+    defer provider2.deinit();
 
-    // Both calls should return pointer to same instance
-    try std.testing.expect(provider1 == provider2);
+    // Both providers should have the same provider name
     try std.testing.expectEqualStrings("huggingface", provider1.getProvider());
+    try std.testing.expectEqualStrings("huggingface", provider2.getProvider());
 }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 const openai_compat = @import("openai-compatible");
 
@@ -6,7 +7,7 @@ pub const DeepInfraProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 pub const DeepInfraProvider = struct {
@@ -108,14 +109,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("DEEPINFRA_API_KEY");
 }
 
-fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig) std.StringHashMap([]const u8) {
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
     headers.put("Content-Type", "application/json") catch {};
 
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -136,14 +138,6 @@ pub fn createDeepInfraWithSettings(
     return DeepInfraProvider.init(allocator, settings);
 }
 
-var default_provider: ?DeepInfraProvider = null;
-
-pub fn deepinfra() *DeepInfraProvider {
-    if (default_provider == null) {
-        default_provider = createDeepInfra(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 // ============================================================================
 // Tests
@@ -342,7 +336,7 @@ test "DeepInfraProviderSettings defaults" {
     try std.testing.expectEqual(@as(?[]const u8, null), settings.base_url);
     try std.testing.expectEqual(@as(?[]const u8, null), settings.api_key);
     try std.testing.expectEqual(@as(?std.StringHashMap([]const u8), null), settings.headers);
-    try std.testing.expectEqual(@as(?*anyopaque, null), settings.http_client);
+    try std.testing.expect(settings.http_client == null);
 }
 
 test "DeepInfraProviderSettings with custom values" {
@@ -377,18 +371,20 @@ test "createDeepInfraWithSettings applies custom settings" {
     try std.testing.expectEqualStrings("https://test.com", provider.base_url);
 }
 
-test "deepinfra singleton returns valid provider" {
-    const provider_ptr = deepinfra();
+test "deepinfra provider returns valid provider" {
+    var provider = createDeepInfra(std.testing.allocator);
+    defer provider.deinit();
 
-    try std.testing.expect(@intFromPtr(provider_ptr) != 0);
-    try std.testing.expectEqualStrings("deepinfra", provider_ptr.getProvider());
+    try std.testing.expectEqualStrings("deepinfra", provider.getProvider());
 }
 
-test "deepinfra singleton returns same instance" {
-    const provider1 = deepinfra();
-    const provider2 = deepinfra();
+test "deepinfra providers have consistent values" {
+    var provider1 = createDeepInfra(std.testing.allocator);
+    defer provider1.deinit();
+    var provider2 = createDeepInfra(std.testing.allocator);
+    defer provider2.deinit();
 
-    try std.testing.expectEqual(provider1, provider2);
+    try std.testing.expectEqualStrings(provider1.getProvider(), provider2.getProvider());
 }
 
 test "getHeadersFn creates headers with content type" {
@@ -402,12 +398,12 @@ test "getHeadersFn creates headers with content type" {
         .headers_fn = getHeadersFn,
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer {
         // Only free the Authorization header if present (it's heap-allocated)
         // Content-Type value is a string literal and shouldn't be freed
         if (headers.get("Authorization")) |auth_value| {
-            std.heap.page_allocator.free(auth_value);
+            std.testing.allocator.free(auth_value);
         }
         headers.deinit();
     }

@@ -13,7 +13,6 @@ pub const MistralProvider = provider.MistralProvider;
 pub const MistralProviderSettings = provider.MistralProviderSettings;
 pub const createMistral = provider.createMistral;
 pub const createMistralWithSettings = provider.createMistralWithSettings;
-pub const mistral = provider.mistral;
 
 // Configuration
 pub const config = @import("mistral-config.zig");

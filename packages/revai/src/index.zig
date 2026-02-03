@@ -19,7 +19,6 @@ pub const SummarizationConfig = provider.SummarizationConfig;
 pub const TranslationConfig = provider.TranslationConfig;
 pub const createRevAI = provider.createRevAI;
 pub const createRevAIWithSettings = provider.createRevAIWithSettings;
-pub const revai = provider.revai;
 
 test {
     @import("std").testing.refAllDecls(@This());

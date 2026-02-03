@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 const lm = @import("../../provider/src/language-model/v3/index.zig");
 
@@ -31,7 +32,7 @@ pub const AmazonBedrockProviderSettings = struct {
     headers: ?std.StringHashMap([]const u8) = null,
 
     /// HTTP client
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,
@@ -198,10 +199,11 @@ fn getBearerTokenFromEnv() ?[]const u8 {
     return std.posix.getenv("AWS_BEARER_TOKEN_BEDROCK");
 }
 
-/// Headers function for config
-fn getHeadersFn(config: *const config_mod.BedrockConfig) std.StringHashMap([]const u8) {
+/// Headers function for config.
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const config_mod.BedrockConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add content-type
     headers.put("Content-Type", "application/json") catch {};
@@ -209,7 +211,7 @@ fn getHeadersFn(config: *const config_mod.BedrockConfig) std.StringHashMap([]con
     // Add authorization (would need SigV4 or bearer token)
     if (getBearerTokenFromEnv()) |token| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{token},
         ) catch return headers;
@@ -232,16 +234,6 @@ pub fn createAmazonBedrockWithSettings(
     return AmazonBedrockProvider.init(allocator, settings);
 }
 
-/// Default Amazon Bedrock provider instance (created lazily)
-var default_provider: ?AmazonBedrockProvider = null;
-
-/// Get the default Amazon Bedrock provider
-pub fn bedrock() *AmazonBedrockProvider {
-    if (default_provider == null) {
-        default_provider = createAmazonBedrock(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 test "AmazonBedrockProvider basic" {
     const allocator = std.testing.allocator;

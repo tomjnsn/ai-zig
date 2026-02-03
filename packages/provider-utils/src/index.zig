@@ -12,6 +12,7 @@ pub const StreamingArena = arena.StreamingArena;
 pub const http = struct {
     pub const client = @import("http/client.zig");
     pub const std_client = @import("http/std-client.zig");
+    pub const mock_client = @import("http/mock-client.zig");
 };
 
 pub const HttpClient = http.client.HttpClient;
@@ -23,6 +24,10 @@ pub const HttpHeader = http.client.HttpClient.Header;
 pub const HttpStreamCallbacks = http.client.HttpClient.StreamCallbacks;
 pub const RequestBuilder = http.client.RequestBuilder;
 pub const createStdHttpClient = http.std_client.createStdHttpClient;
+
+// Mock HTTP client for testing
+pub const MockHttpClient = http.mock_client.MockHttpClient;
+pub const createMockHttpClient = http.mock_client.createMockHttpClient;
 
 // Streaming
 pub const streaming = struct {

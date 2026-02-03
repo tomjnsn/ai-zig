@@ -11,7 +11,6 @@ pub const FireworksProvider = provider.FireworksProvider;
 pub const FireworksProviderSettings = provider.FireworksProviderSettings;
 pub const createFireworks = provider.createFireworks;
 pub const createFireworksWithSettings = provider.createFireworksWithSettings;
-pub const fireworks = provider.fireworks;
 
 test {
     @import("std").testing.refAllDecls(@This());

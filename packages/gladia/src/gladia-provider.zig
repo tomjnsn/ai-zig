@@ -1,11 +1,12 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 
 pub const GladiaProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// Gladia Transcription Model IDs
@@ -208,6 +209,18 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("GLADIA_API_KEY");
 }
 
+/// Get headers for API requests. Caller owns the returned HashMap.
+pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    headers.put("Content-Type", "application/json") catch {};
+
+    if (getApiKeyFromEnv()) |api_key| {
+        headers.put("x-gladia-key", api_key) catch {};
+    }
+
+    return headers;
+}
+
 pub fn createGladia(allocator: std.mem.Allocator) GladiaProvider {
     return GladiaProvider.init(allocator, .{});
 }
@@ -217,15 +230,6 @@ pub fn createGladiaWithSettings(
     settings: GladiaProviderSettings,
 ) GladiaProvider {
     return GladiaProvider.init(allocator, settings);
-}
-
-var default_provider: ?GladiaProvider = null;
-
-pub fn gladia() *GladiaProvider {
-    if (default_provider == null) {
-        default_provider = createGladia(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 test "GladiaProvider basic" {

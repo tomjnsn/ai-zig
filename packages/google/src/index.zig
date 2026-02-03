@@ -15,7 +15,6 @@ pub const GoogleGenerativeAIProvider = provider.GoogleGenerativeAIProvider;
 pub const GoogleGenerativeAIProviderSettings = provider.GoogleGenerativeAIProviderSettings;
 pub const createGoogleGenerativeAI = provider.createGoogleGenerativeAI;
 pub const createGoogleGenerativeAIWithSettings = provider.createGoogleGenerativeAIWithSettings;
-pub const google = provider.google;
 
 // Configuration
 pub const config = @import("google-config.zig");

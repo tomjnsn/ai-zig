@@ -19,7 +19,6 @@ pub const TranscriptionOptions = provider.TranscriptionOptions;
 pub const SpeechOptions = provider.SpeechOptions;
 pub const createDeepgram = provider.createDeepgram;
 pub const createDeepgramWithSettings = provider.createDeepgramWithSettings;
-pub const deepgram = provider.deepgram;
 
 test {
     @import("std").testing.refAllDecls(@This());

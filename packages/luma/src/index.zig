@@ -10,7 +10,6 @@ pub const LumaProviderSettings = provider.LumaProviderSettings;
 pub const LumaImageModel = provider.LumaImageModel;
 pub const createLuma = provider.createLuma;
 pub const createLumaWithSettings = provider.createLumaWithSettings;
-pub const luma = provider.luma;
 
 test {
     @import("std").testing.refAllDecls(@This());

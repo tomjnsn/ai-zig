@@ -1,4 +1,6 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
+const HttpClient = provider_utils.HttpClient;
 
 /// Groq API configuration
 pub const GroqConfig = struct {
@@ -12,7 +14,7 @@ pub const GroqConfig = struct {
     headers_fn: ?*const fn (*const GroqConfig, std.mem.Allocator) std.StringHashMap([]const u8) = null,
 
     /// HTTP client (optional)
-    http_client: ?*anyopaque = null,
+    http_client: ?HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,

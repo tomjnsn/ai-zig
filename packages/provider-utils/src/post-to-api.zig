@@ -192,7 +192,15 @@ pub fn postToApi(
     // Add custom headers
     if (options.headers) |custom_headers| {
         for (custom_headers) |h| {
-            headers_list.append(h) catch continue;
+            headers_list.append(h) catch {
+                callbacks.on_error(callbacks.ctx, .{
+                    .info = errors.ApiCallError.init(.{
+                        .message = "Failed to append header to request",
+                        .url = options.url,
+                    }),
+                });
+                return;
+            };
         }
     }
 

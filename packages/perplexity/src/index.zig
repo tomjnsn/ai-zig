@@ -10,7 +10,6 @@ pub const PerplexityProvider = provider.PerplexityProvider;
 pub const PerplexityProviderSettings = provider.PerplexityProviderSettings;
 pub const createPerplexity = provider.createPerplexity;
 pub const createPerplexityWithSettings = provider.createPerplexityWithSettings;
-pub const perplexity = provider.perplexity;
 
 test {
     @import("std").testing.refAllDecls(@This());

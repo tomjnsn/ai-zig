@@ -166,7 +166,7 @@ pub const GoogleGenerativeAIImageModel = struct {
 
         // Get headers
         const headers = if (self.config.headers_fn) |headers_fn|
-            headers_fn(&self.config)
+            headers_fn(&self.config, request_allocator)
         else
             std.StringHashMap([]const u8).init(request_allocator);
 

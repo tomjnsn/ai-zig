@@ -12,7 +12,6 @@ pub const TogetherAIProvider = provider.TogetherAIProvider;
 pub const TogetherAIProviderSettings = provider.TogetherAIProviderSettings;
 pub const createTogetherAI = provider.createTogetherAI;
 pub const createTogetherAIWithSettings = provider.createTogetherAIWithSettings;
-pub const togetherai = provider.togetherai;
 
 test {
     @import("std").testing.refAllDecls(@This());

@@ -1,11 +1,12 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 
 pub const LmntProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// LMNT Speech Model IDs
@@ -165,6 +166,19 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("LMNT_API_KEY");
 }
 
+/// Get headers for API requests. Caller owns the returned HashMap.
+pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    headers.put("Content-Type", "application/json") catch {};
+
+    if (getApiKeyFromEnv()) |api_key| {
+        const auth_header = std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key}) catch return headers;
+        headers.put("X-API-Key", auth_header) catch {};
+    }
+
+    return headers;
+}
+
 pub fn createLmnt(allocator: std.mem.Allocator) LmntProvider {
     return LmntProvider.init(allocator, .{});
 }
@@ -174,15 +188,6 @@ pub fn createLmntWithSettings(
     settings: LmntProviderSettings,
 ) LmntProvider {
     return LmntProvider.init(allocator, settings);
-}
-
-var default_provider: ?LmntProvider = null;
-
-pub fn lmnt() *LmntProvider {
-    if (default_provider == null) {
-        default_provider = createLmnt(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 test "LmntProvider basic" {

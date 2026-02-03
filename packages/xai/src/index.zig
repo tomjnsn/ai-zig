@@ -11,7 +11,6 @@ pub const XaiProvider = provider.XaiProvider;
 pub const XaiProviderSettings = provider.XaiProviderSettings;
 pub const createXai = provider.createXai;
 pub const createXaiWithSettings = provider.createXaiWithSettings;
-pub const xai = provider.xai;
 
 test {
     @import("std").testing.refAllDecls(@This());

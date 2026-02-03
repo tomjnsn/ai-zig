@@ -13,7 +13,6 @@ pub const GroqProvider = provider.GroqProvider;
 pub const GroqProviderSettings = provider.GroqProviderSettings;
 pub const createGroq = provider.createGroq;
 pub const createGroqWithSettings = provider.createGroqWithSettings;
-pub const groq = provider.groq;
 
 // Configuration
 pub const config = @import("groq-config.zig");

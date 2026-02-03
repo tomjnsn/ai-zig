@@ -1,11 +1,12 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 
 pub const LumaProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// Luma Image Model (Dream Machine)
@@ -113,6 +114,19 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("LUMA_API_KEY");
 }
 
+/// Get headers for API requests. Caller owns the returned HashMap.
+pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    headers.put("Content-Type", "application/json") catch {};
+
+    if (getApiKeyFromEnv()) |api_key| {
+        const auth_header = std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key}) catch return headers;
+        headers.put("Authorization", auth_header) catch {};
+    }
+
+    return headers;
+}
+
 pub fn createLuma(allocator: std.mem.Allocator) LumaProvider {
     return LumaProvider.init(allocator, .{});
 }
@@ -122,15 +136,6 @@ pub fn createLumaWithSettings(
     settings: LumaProviderSettings,
 ) LumaProvider {
     return LumaProvider.init(allocator, settings);
-}
-
-var default_provider: ?LumaProvider = null;
-
-pub fn luma() *LumaProvider {
-    if (default_provider == null) {
-        default_provider = createLuma(std.heap.page_allocator);
-    }
-    return &default_provider.?;
 }
 
 test "LumaProvider basic" {

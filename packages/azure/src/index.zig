@@ -16,7 +16,6 @@ pub const AzureOpenAIProvider = provider.AzureOpenAIProvider;
 pub const AzureOpenAIProviderSettings = provider.AzureOpenAIProviderSettings;
 pub const createAzure = provider.createAzure;
 pub const createAzureWithSettings = provider.createAzureWithSettings;
-pub const azure = provider.azure;
 
 // Configuration
 pub const config = @import("azure-config.zig");

@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 const openai_compat = @import("openai-compatible");
 
@@ -6,7 +7,7 @@ pub const PerplexityProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 pub const PerplexityProvider = struct {
@@ -94,14 +95,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("PERPLEXITY_API_KEY");
 }
 
-fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig) std.StringHashMap([]const u8) {
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
     headers.put("Content-Type", "application/json") catch {};
 
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -122,14 +124,6 @@ pub fn createPerplexityWithSettings(
     return PerplexityProvider.init(allocator, settings);
 }
 
-var default_provider: ?PerplexityProvider = null;
-
-pub fn perplexity() *PerplexityProvider {
-    if (default_provider == null) {
-        default_provider = createPerplexity(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 // ============================================================================
 // Unit Tests
@@ -289,14 +283,16 @@ test "PerplexityProvider vtable unsupported models return errors" {
     }
 }
 
-test "PerplexityProvider singleton instance" {
-    // Get default provider
-    const provider1 = perplexity();
-    const provider2 = perplexity();
+test "PerplexityProvider returns consistent values" {
+    // Create two providers
+    var provider1 = createPerplexity(std.testing.allocator);
+    defer provider1.deinit();
+    var provider2 = createPerplexity(std.testing.allocator);
+    defer provider2.deinit();
 
-    // Should return the same instance
-    try std.testing.expectEqual(provider1, provider2);
+    // Both should have the same provider name
     try std.testing.expectEqualStrings("perplexity", provider1.getProvider());
+    try std.testing.expectEqualStrings("perplexity", provider2.getProvider());
 }
 
 test "createPerplexity creates valid provider" {
@@ -350,7 +346,7 @@ test "getHeadersFn creates headers with content type" {
         .http_client = null,
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     // Content-Type header should always be present

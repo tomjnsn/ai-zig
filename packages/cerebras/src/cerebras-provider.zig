@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("provider").provider;
 const openai_compat = @import("openai-compatible");
 
@@ -6,7 +7,7 @@ pub const CerebrasProviderSettings = struct {
     base_url: ?[]const u8 = null,
     api_key: ?[]const u8 = null,
     headers: ?std.StringHashMap([]const u8) = null,
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 pub const CerebrasProvider = struct {
@@ -90,14 +91,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("CEREBRAS_API_KEY");
 }
 
-fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig) std.StringHashMap([]const u8) {
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
     headers.put("Content-Type", "application/json") catch {};
 
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -118,14 +120,6 @@ pub fn createCerebrasWithSettings(
     return CerebrasProvider.init(allocator, settings);
 }
 
-var default_provider: ?CerebrasProvider = null;
-
-pub fn cerebras() *CerebrasProvider {
-    if (default_provider == null) {
-        default_provider = createCerebras(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 // ============================================================================
 // Tests
@@ -184,24 +178,14 @@ test "CerebrasProvider initialization with null api_key" {
     try std.testing.expect(provider.settings.api_key == null);
 }
 
-test "CerebrasProvider initialization with http_client" {
-    const allocator = std.testing.allocator;
-    var dummy_client: u32 = 42;
+test "CerebrasProvider returns consistent values" {
+    var provider1 = createCerebras(std.testing.allocator);
+    defer provider1.deinit();
+    var provider2 = createCerebras(std.testing.allocator);
+    defer provider2.deinit();
 
-    var provider = createCerebrasWithSettings(allocator, .{
-        .http_client = &dummy_client,
-    });
-    defer provider.deinit();
-
-    try std.testing.expect(provider.settings.http_client != null);
-}
-
-test "CerebrasProvider default instance singleton" {
-    const provider1 = cerebras();
-    const provider2 = cerebras();
-
-    try std.testing.expect(provider1 == provider2);
     try std.testing.expectEqualStrings("cerebras", provider1.getProvider());
+    try std.testing.expectEqualStrings("cerebras", provider2.getProvider());
 }
 
 test "CerebrasProvider specification version" {
@@ -392,7 +376,7 @@ test "getHeadersFn creates correct headers" {
         .provider = "cerebras.chat",
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     const content_type = headers.get("Content-Type");
@@ -408,7 +392,7 @@ test "getHeadersFn includes authorization when env var is set" {
         .provider = "cerebras.chat",
     };
 
-    var headers = getHeadersFn(&config);
+    var headers = getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     if (getApiKeyFromEnv()) |_| {

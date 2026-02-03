@@ -249,10 +249,11 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("AZURE_API_KEY");
 }
 
-/// Headers function for Azure config
-fn getHeadersFn(config: *const config_mod.AzureOpenAIConfig) std.StringHashMap([]const u8) {
+/// Headers function for Azure config.
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const config_mod.AzureOpenAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add API key header
     if (getApiKeyFromEnv()) |api_key| {
@@ -294,16 +295,6 @@ pub fn createAzureWithSettings(
     return AzureOpenAIProvider.init(allocator, settings);
 }
 
-/// Default Azure OpenAI provider instance (created lazily)
-var default_provider: ?AzureOpenAIProvider = null;
-
-/// Get the default Azure OpenAI provider
-pub fn azure() *AzureOpenAIProvider {
-    if (default_provider == null) {
-        default_provider = createAzure(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 test "AzureOpenAIProviderSettings defaults" {
     const settings = AzureOpenAIProviderSettings{};

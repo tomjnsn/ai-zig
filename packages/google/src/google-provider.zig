@@ -24,7 +24,7 @@ pub const GoogleGenerativeAIProviderSettings = struct {
     name: ?[]const u8 = null,
 
     /// HTTP client for making requests
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,
@@ -194,10 +194,11 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("GOOGLE_GENERATIVE_AI_API_KEY");
 }
 
-/// Headers function for config
-fn getHeadersFn(config: *const config_mod.GoogleGenerativeAIConfig) std.StringHashMap([]const u8) {
+/// Headers function for config.
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const config_mod.GoogleGenerativeAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add API key header
     if (getApiKeyFromEnv()) |api_key| {
@@ -223,16 +224,6 @@ pub fn createGoogleGenerativeAIWithSettings(
     return GoogleGenerativeAIProvider.init(allocator, settings);
 }
 
-/// Default Google Generative AI provider instance (created lazily)
-var default_provider: ?GoogleGenerativeAIProvider = null;
-
-/// Get the default Google Generative AI provider
-pub fn google() *GoogleGenerativeAIProvider {
-    if (default_provider == null) {
-        default_provider = createGoogleGenerativeAI(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 test "GoogleGenerativeAIProvider basic" {
     const allocator = std.testing.allocator;

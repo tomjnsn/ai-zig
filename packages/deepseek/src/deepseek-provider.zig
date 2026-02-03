@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 
 const config_mod = @import("deepseek-config.zig");
@@ -16,7 +17,7 @@ pub const DeepSeekProviderSettings = struct {
     headers: ?std.StringHashMap([]const u8) = null,
 
     /// HTTP client
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 };
 
 /// DeepSeek Provider
@@ -122,15 +123,16 @@ fn getApiKeyFromEnv() ?[]const u8 {
     return std.posix.getenv("DEEPSEEK_API_KEY");
 }
 
-fn getHeadersFn(config: *const config_mod.DeepSeekConfig) std.StringHashMap([]const u8) {
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const config_mod.DeepSeekConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     headers.put("Content-Type", "application/json") catch {};
 
     if (getApiKeyFromEnv()) |api_key| {
         const auth_header = std.fmt.allocPrint(
-            std.heap.page_allocator,
+            allocator,
             "Bearer {s}",
             .{api_key},
         ) catch return headers;
@@ -151,14 +153,6 @@ pub fn createDeepSeekWithSettings(
     return DeepSeekProvider.init(allocator, settings);
 }
 
-var default_provider: ?DeepSeekProvider = null;
-
-pub fn deepseek() *DeepSeekProvider {
-    if (default_provider == null) {
-        default_provider = createDeepSeek(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 test "DeepSeekProvider basic" {
     const allocator = std.testing.allocator;

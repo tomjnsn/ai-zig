@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
 const lm = @import("../../provider/src/language-model/v3/index.zig");
 
@@ -29,7 +30,7 @@ pub const GoogleVertexProviderSettings = struct {
     headers: ?std.StringHashMap([]const u8) = null,
 
     /// HTTP client for making requests
-    http_client: ?*anyopaque = null,
+    http_client: ?provider_utils.HttpClient = null,
 
     /// ID generator function
     generate_id: ?*const fn () []const u8 = null,
@@ -228,10 +229,11 @@ fn buildDefaultBaseUrl(allocator: std.mem.Allocator, project: []const u8, locati
     return config_mod.buildBaseUrl(allocator, project, location, null);
 }
 
-/// Headers function for Google AI config
-fn getHeadersFn(config: *const google_config.GoogleGenerativeAIConfig) std.StringHashMap([]const u8) {
+/// Headers function for Google AI config.
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getHeadersFn(config: *const google_config.GoogleGenerativeAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add content-type
     headers.put("Content-Type", "application/json") catch {};
@@ -239,10 +241,11 @@ fn getHeadersFn(config: *const google_config.GoogleGenerativeAIConfig) std.Strin
     return headers;
 }
 
-/// Headers function for Vertex config
-fn getVertexHeadersFn(config: *const config_mod.GoogleVertexConfig) std.StringHashMap([]const u8) {
+/// Headers function for Vertex config.
+/// Caller owns the returned HashMap and must call deinit() when done.
+fn getVertexHeadersFn(config: *const config_mod.GoogleVertexConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
     _ = config;
-    var headers = std.StringHashMap([]const u8).init(std.heap.page_allocator);
+    var headers = std.StringHashMap([]const u8).init(allocator);
 
     // Add content-type
     headers.put("Content-Type", "application/json") catch {};
@@ -263,16 +266,6 @@ pub fn createVertexWithSettings(
     return GoogleVertexProvider.init(allocator, settings);
 }
 
-/// Default Google Vertex AI provider instance (created lazily)
-var default_provider: ?GoogleVertexProvider = null;
-
-/// Get the default Google Vertex AI provider
-pub fn vertex() *GoogleVertexProvider {
-    if (default_provider == null) {
-        default_provider = createVertex(std.heap.page_allocator);
-    }
-    return &default_provider.?;
-}
 
 test "GoogleVertexProvider basic" {
     const allocator = std.testing.allocator;
