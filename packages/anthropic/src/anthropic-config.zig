@@ -31,7 +31,7 @@ pub const AnthropicConfig = struct {
 };
 
 /// Default Anthropic API version
-pub const anthropic_version = "2023-06-01";
+pub const anthropic_version = "2024-06-01";
 
 /// Default base URL
 pub const default_base_url = "https://api.anthropic.com/v1";

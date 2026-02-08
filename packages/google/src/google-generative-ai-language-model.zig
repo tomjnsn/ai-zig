@@ -8,6 +8,7 @@ const options_mod = @import("google-generative-ai-options.zig");
 const convert = @import("convert-to-google-generative-ai-messages.zig");
 const prepare_tools = @import("google-prepare-tools.zig");
 const map_finish = @import("map-google-generative-ai-finish-reason.zig");
+const response_types = @import("google-generative-ai-response.zig");
 
 /// Google Generative AI Language Model
 pub const GoogleGenerativeAILanguageModel = struct {
@@ -79,10 +80,13 @@ pub const GoogleGenerativeAILanguageModel = struct {
         };
 
         // Get headers
-        const headers = if (self.config.headers_fn) |headers_fn|
+        var headers = if (self.config.headers_fn) |headers_fn|
             headers_fn(&self.config, request_allocator)
         else
             std.StringHashMap([]const u8).init(request_allocator);
+
+        // Ensure content-type is set
+        headers.put("Content-Type", "application/json") catch {};
 
         // Serialize request body
         var body_buffer = std.ArrayList(u8).init(request_allocator);
@@ -91,27 +95,275 @@ pub const GoogleGenerativeAILanguageModel = struct {
             return;
         };
 
-        // TODO: Make HTTP request with url, headers, and body_buffer.items
-        _ = url;
-        _ = headers;
-        _ = body_buffer.items;
+        // Get HTTP client
+        const http_client = self.config.http_client orelse {
+            callback(callback_context, .{ .failure = error.NoHttpClient });
+            return;
+        };
 
-        // For now, return a placeholder result
-        // Actual implementation would parse the response
-        const result = lm.LanguageModelV3.GenerateSuccess{
-            .content = &[_]lm.LanguageModelV3Content{},
-            .finish_reason = .stop,
-            .usage = .{
-                .prompt_tokens = 0,
-                .completion_tokens = 0,
+        // Convert headers to slice
+        var header_list = std.ArrayList(provider_utils.HttpHeader).init(request_allocator);
+        var header_iter = headers.iterator();
+        while (header_iter.next()) |entry| {
+            header_list.append(.{
+                .name = entry.key_ptr.*,
+                .value = entry.value_ptr.*,
+            }) catch {};
+        }
+
+        // Create context for callback
+        const ResponseContext = struct {
+            response_body: ?[]const u8 = null,
+            response_error: ?provider_utils.HttpError = null,
+        };
+        var response_ctx = ResponseContext{};
+
+        // Make HTTP request
+        http_client.request(
+            .{
+                .method = .POST,
+                .url = url,
+                .headers = header_list.items,
+                .body = body_buffer.items,
             },
+            request_allocator,
+            struct {
+                fn onResponse(ctx: ?*anyopaque, response: provider_utils.HttpResponse) void {
+                    const rctx: *ResponseContext = @ptrCast(@alignCast(ctx.?));
+                    rctx.response_body = response.body;
+                }
+            }.onResponse,
+            struct {
+                fn onError(ctx: ?*anyopaque, err: provider_utils.HttpError) void {
+                    const rctx: *ResponseContext = @ptrCast(@alignCast(ctx.?));
+                    rctx.response_error = err;
+                }
+            }.onError,
+            &response_ctx,
+        );
+
+        // Check for errors
+        if (response_ctx.response_error != null) {
+            callback(callback_context, .{ .failure = error.HttpRequestFailed });
+            return;
+        }
+
+        const response_body = response_ctx.response_body orelse {
+            callback(callback_context, .{ .failure = error.NoResponse });
+            return;
+        };
+
+        // Parse response
+        const parsed = response_types.GoogleGenerateContentResponse.fromJson(request_allocator, response_body) catch {
+            callback(callback_context, .{ .failure = error.InvalidResponse });
+            return;
+        };
+        const response = parsed.value;
+
+        // Extract content from response
+        var content = std.ArrayList(lm.LanguageModelV3Content).init(result_allocator);
+
+        if (response.candidates) |candidates| {
+            if (candidates.len > 0) {
+                const candidate = candidates[0];
+
+                if (candidate.content) |resp_content| {
+                    if (resp_content.parts) |parts| {
+                        for (parts) |part| {
+                            // Handle text
+                            if (part.text) |text| {
+                                if (text.len > 0) {
+                                    const text_copy = result_allocator.dupe(u8, text) catch continue;
+                                    content.append(.{
+                                        .text = .{ .text = text_copy },
+                                    }) catch {};
+                                }
+                            }
+
+                            // Handle function calls
+                            if (part.functionCall) |fc| {
+                                var args_str: []const u8 = "{}";
+                                if (fc.args) |args| {
+                                    var args_buffer = std.ArrayList(u8).init(request_allocator);
+                                    std.json.stringify(args, .{}, args_buffer.writer()) catch {};
+                                    args_str = result_allocator.dupe(u8, args_buffer.items) catch "{}";
+                                }
+                                content.append(.{
+                                    .tool_call = .{
+                                        .tool_call_id = result_allocator.dupe(u8, fc.name) catch "",
+                                        .tool_name = result_allocator.dupe(u8, fc.name) catch "",
+                                        .input = args_str,
+                                    },
+                                }) catch {};
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Extract usage
+        var usage = lm.LanguageModelV3Usage{
+            .prompt_tokens = 0,
+            .completion_tokens = 0,
+        };
+        if (response.usageMetadata) |meta| {
+            if (meta.promptTokenCount) |ptc| usage.prompt_tokens = ptc;
+            if (meta.candidatesTokenCount) |ctc| usage.completion_tokens = ctc;
+        }
+
+        // Get finish reason
+        var finish_reason: lm.LanguageModelV3FinishReason = .unknown;
+        if (response.candidates) |candidates| {
+            if (candidates.len > 0) {
+                if (candidates[0].finishReason) |fr| {
+                    finish_reason = map_finish.mapGoogleGenerativeAIFinishReason(fr);
+                }
+            }
+        }
+
+        const result = lm.LanguageModelV3.GenerateSuccess{
+            .content = content.toOwnedSlice() catch &[_]lm.LanguageModelV3Content{},
+            .finish_reason = finish_reason,
+            .usage = usage,
             .warnings = &[_]shared.SharedV3Warning{},
         };
 
-        // Clone result to result_allocator
-        _ = result_allocator;
         callback(callback_context, .{ .success = result });
     }
+
+    /// Stream state for SSE parsing
+    const StreamState = struct {
+        callbacks: lm.LanguageModelV3.StreamCallbacks,
+        result_allocator: std.mem.Allocator,
+        request_allocator: std.mem.Allocator,
+        is_text_active: bool = false,
+        finish_reason: lm.LanguageModelV3FinishReason = .unknown,
+        usage: lm.LanguageModelV3Usage = .{ .prompt_tokens = 0, .completion_tokens = 0 },
+        partial_line: std.ArrayList(u8),
+
+        fn init(
+            callbacks: lm.LanguageModelV3.StreamCallbacks,
+            result_allocator: std.mem.Allocator,
+            request_allocator: std.mem.Allocator,
+        ) StreamState {
+            return .{
+                .callbacks = callbacks,
+                .result_allocator = result_allocator,
+                .request_allocator = request_allocator,
+                .partial_line = std.ArrayList(u8).init(request_allocator),
+            };
+        }
+
+        fn processChunk(self: *StreamState, chunk: []const u8) void {
+            // Append chunk to partial line buffer
+            self.partial_line.appendSlice(chunk) catch return;
+
+            // Process complete lines
+            while (std.mem.indexOf(u8, self.partial_line.items, "\n")) |newline_pos| {
+                const line = self.partial_line.items[0..newline_pos];
+                self.processLine(line);
+
+                // Remove processed line from buffer
+                const remaining = self.partial_line.items[newline_pos + 1 ..];
+                std.mem.copyForwards(u8, self.partial_line.items[0..remaining.len], remaining);
+                self.partial_line.shrinkRetainingCapacity(remaining.len);
+            }
+        }
+
+        fn processLine(self: *StreamState, line: []const u8) void {
+            // Skip empty lines
+            const trimmed = std.mem.trim(u8, line, " \r\n");
+            if (trimmed.len == 0) return;
+
+            // Parse SSE data line
+            if (std.mem.startsWith(u8, trimmed, "data: ")) {
+                const json_data = trimmed[6..];
+
+                // Skip [DONE] marker
+                if (std.mem.eql(u8, json_data, "[DONE]")) return;
+
+                // Parse JSON
+                const parsed = std.json.parseFromSlice(
+                    response_types.GoogleGenerateContentResponse,
+                    self.request_allocator,
+                    json_data,
+                    .{ .ignore_unknown_fields = true },
+                ) catch return;
+                const response = parsed.value;
+
+                // Process response
+                if (response.candidates) |candidates| {
+                    if (candidates.len > 0) {
+                        const candidate = candidates[0];
+
+                        if (candidate.content) |content| {
+                            if (content.parts) |parts| {
+                                for (parts) |part| {
+                                    if (part.text) |text| {
+                                        // Emit text_start if not active
+                                        if (!self.is_text_active) {
+                                            self.callbacks.on_part(self.callbacks.ctx, .{ .text_start = {} });
+                                            self.is_text_active = true;
+                                        }
+                                        // Emit text delta
+                                        const text_copy = self.result_allocator.dupe(u8, text) catch continue;
+                                        self.callbacks.on_part(self.callbacks.ctx, .{
+                                            .text_delta = .{ .text_delta = text_copy },
+                                        });
+                                    }
+
+                                    if (part.functionCall) |fc| {
+                                        var args_str: []const u8 = "{}";
+                                        if (fc.args) |args| {
+                                            var args_buffer = std.ArrayList(u8).init(self.request_allocator);
+                                            std.json.stringify(args, .{}, args_buffer.writer()) catch {};
+                                            args_str = self.result_allocator.dupe(u8, args_buffer.items) catch "{}";
+                                        }
+                                        self.callbacks.on_part(self.callbacks.ctx, .{
+                                            .tool_call = .{
+                                                .tool_call_id = self.result_allocator.dupe(u8, fc.name) catch "",
+                                                .tool_name = self.result_allocator.dupe(u8, fc.name) catch "",
+                                                .input = args_str,
+                                            },
+                                        });
+                                    }
+                                }
+                            }
+                        }
+
+                        if (candidate.finishReason) |fr| {
+                            self.finish_reason = map_finish.mapGoogleGenerativeAIFinishReason(fr);
+                        }
+                    }
+                }
+
+                // Extract usage
+                if (response.usageMetadata) |meta| {
+                    if (meta.promptTokenCount) |ptc| self.usage.prompt_tokens = ptc;
+                    if (meta.candidatesTokenCount) |ctc| self.usage.completion_tokens = ctc;
+                }
+            }
+        }
+
+        fn finish(self: *StreamState) void {
+            // Emit text_end if text was active
+            if (self.is_text_active) {
+                self.callbacks.on_part(self.callbacks.ctx, .{ .text_end = {} });
+            }
+
+            // Emit finish part
+            self.callbacks.on_part(self.callbacks.ctx, .{
+                .finish = .{
+                    .finish_reason = self.finish_reason,
+                    .usage = self.usage,
+                },
+            });
+
+            // Complete the stream
+            self.callbacks.on_complete(self.callbacks.ctx, null);
+        }
+    };
 
     /// Stream content
     pub fn doStream(
@@ -122,12 +374,13 @@ pub const GoogleGenerativeAILanguageModel = struct {
     ) void {
         // Use arena for request processing
         var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
+        // Note: arena cleanup is deferred until stream completes
         const request_allocator = arena.allocator();
 
         // Build the request
         const request_body = self.buildRequestBody(request_allocator, call_options) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
             return;
         };
 
@@ -138,26 +391,78 @@ pub const GoogleGenerativeAILanguageModel = struct {
             .{ self.config.base_url, self.getModelPath() },
         ) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
             return;
         };
 
-        _ = url;
-        _ = request_body;
-        _ = result_allocator;
+        // Get headers
+        var headers = if (self.config.headers_fn) |headers_fn|
+            headers_fn(&self.config, request_allocator)
+        else
+            std.StringHashMap([]const u8).init(request_allocator);
 
-        // For now, emit completion
-        // Actual implementation would stream from the API
-        callbacks.on_part(callbacks.ctx, .{
-            .finish = .{
-                .finish_reason = .stop,
-                .usage = .{
-                    .prompt_tokens = 0,
-                    .completion_tokens = 0,
-                },
+        headers.put("Content-Type", "application/json") catch {};
+
+        // Serialize request body
+        var body_buffer = std.ArrayList(u8).init(request_allocator);
+        std.json.stringify(request_body, .{}, body_buffer.writer()) catch |err| {
+            callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
+            return;
+        };
+
+        // Get HTTP client
+        const http_client = self.config.http_client orelse {
+            callbacks.on_error(callbacks.ctx, error.NoHttpClient);
+            arena.deinit();
+            return;
+        };
+
+        // Convert headers to slice
+        var header_list = std.ArrayList(provider_utils.HttpHeader).init(request_allocator);
+        var header_iter = headers.iterator();
+        while (header_iter.next()) |entry| {
+            header_list.append(.{
+                .name = entry.key_ptr.*,
+                .value = entry.value_ptr.*,
+            }) catch {};
+        }
+
+        // Create stream state
+        var stream_state = StreamState.init(callbacks, result_allocator, request_allocator);
+
+        // Make streaming HTTP request
+        http_client.requestStreaming(
+            .{
+                .method = .POST,
+                .url = url,
+                .headers = header_list.items,
+                .body = body_buffer.items,
             },
-        });
-
-        callbacks.on_complete(callbacks.ctx, null);
+            request_allocator,
+            .{
+                .on_chunk = struct {
+                    fn onChunk(ctx: ?*anyopaque, chunk: []const u8) void {
+                        const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                        state.processChunk(chunk);
+                    }
+                }.onChunk,
+                .on_complete = struct {
+                    fn onComplete(ctx: ?*anyopaque) void {
+                        const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                        state.finish();
+                    }
+                }.onComplete,
+                .on_error = struct {
+                    fn onError(ctx: ?*anyopaque, err: provider_utils.HttpError) void {
+                        const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                        _ = err;
+                        state.callbacks.on_error(state.callbacks.ctx, error.HttpRequestFailed);
+                    }
+                }.onError,
+                .ctx = &stream_state,
+            },
+        );
     }
 
     /// Build the request body for the API call
@@ -322,6 +627,36 @@ pub const GoogleGenerativeAILanguageModel = struct {
             try body.put("toolConfig", .{ .object = tc_obj });
         }
 
+        // Add safety settings from provider options
+        if (call_options.provider_options) |provider_options| {
+            if (provider_options.get("google")) |google_opts| {
+                if (google_opts.get("safety_settings")) |safety_value| {
+                    if (safety_value == .array) {
+                        var safety_arr = std.json.Array.init(allocator);
+                        for (safety_value.array) |setting| {
+                            if (setting == .object) {
+                                var setting_obj = std.json.ObjectMap.init(allocator);
+                                if (setting.object.get("category")) |cat| {
+                                    if (cat == .string) {
+                                        try setting_obj.put("category", .{ .string = cat.string });
+                                    }
+                                }
+                                if (setting.object.get("threshold")) |thresh| {
+                                    if (thresh == .string) {
+                                        try setting_obj.put("threshold", .{ .string = thresh.string });
+                                    }
+                                }
+                                try safety_arr.append(.{ .object = setting_obj });
+                            }
+                        }
+                        if (safety_arr.items.len > 0) {
+                            try body.put("safetySettings", .{ .array = safety_arr });
+                        }
+                    }
+                }
+            }
+        }
+
         return .{ .object = body };
     }
 
@@ -374,4 +709,30 @@ test "GoogleGenerativeAILanguageModel getModelPath" {
     );
 
     try std.testing.expectEqualStrings("tunedModels/my-model", tuned_model.getModelPath());
+}
+
+test "Google finish reason mapping via language model" {
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.stop, map_finish.mapGoogleGenerativeAIFinishReason("STOP", false));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.tool_calls, map_finish.mapGoogleGenerativeAIFinishReason("STOP", true));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.length, map_finish.mapGoogleGenerativeAIFinishReason("MAX_TOKENS", false));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.content_filter, map_finish.mapGoogleGenerativeAIFinishReason("SAFETY", false));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, map_finish.mapGoogleGenerativeAIFinishReason(null, false));
+}
+
+test "Google response parsing integration" {
+    const allocator = std.testing.allocator;
+    const response_json =
+        \\{"candidates":[{"content":{"parts":[{"text":"Hello!"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}}
+    ;
+
+    const parsed = try response_types.GoogleGenerateContentResponse.fromJson(allocator, response_json);
+    defer parsed.deinit();
+    const response = parsed.value;
+
+    try std.testing.expect(response.candidates != null);
+    try std.testing.expectEqual(@as(usize, 1), response.candidates.?.len);
+    try std.testing.expectEqualStrings("STOP", response.candidates.?[0].finishReason.?);
+    try std.testing.expect(response.usageMetadata != null);
+    try std.testing.expectEqual(@as(u64, 10), response.usageMetadata.?.promptTokenCount.?);
+    try std.testing.expectEqual(@as(u64, 5), response.usageMetadata.?.candidatesTokenCount.?);
 }

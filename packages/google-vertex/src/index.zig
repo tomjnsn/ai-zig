@@ -47,6 +47,11 @@ pub const PersonGeneration = options.PersonGeneration;
 pub const SafetySetting = options.SafetySetting;
 pub const SampleImageSize = options.SampleImageSize;
 
+// Response types
+pub const response = @import("google-vertex-response.zig");
+pub const VertexPredictEmbeddingResponse = response.VertexPredictEmbeddingResponse;
+pub const VertexPredictImageResponse = response.VertexPredictImageResponse;
+
 test {
     // Run all module tests
     @import("std").testing.refAllDecls(@This());

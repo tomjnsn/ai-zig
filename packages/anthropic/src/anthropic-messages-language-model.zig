@@ -728,3 +728,48 @@ test "AnthropicMessagesLanguageModel basic" {
     try std.testing.expectEqualStrings("anthropic.messages", model.getProvider());
     try std.testing.expectEqualStrings("claude-sonnet-4-5", model.getModelId());
 }
+
+test "Anthropic API version constant" {
+    try std.testing.expectEqualStrings("2024-06-01", config_mod.anthropic_version);
+}
+
+test "Anthropic stop reason mapping" {
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.stop, map_stop.mapAnthropicStopReason("end_turn", false));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.stop, map_stop.mapAnthropicStopReason("pause_turn", false));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.tool_calls, map_stop.mapAnthropicStopReason("tool_use", false));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.stop, map_stop.mapAnthropicStopReason("tool_use", true));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.length, map_stop.mapAnthropicStopReason("max_tokens", false));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.content_filter, map_stop.mapAnthropicStopReason("refusal", false));
+}
+
+test "Anthropic usage conversion" {
+    const usage = api.AnthropicMessagesResponse.Usage{
+        .input_tokens = 100,
+        .output_tokens = 50,
+        .cache_creation_input_tokens = 10,
+        .cache_read_input_tokens = 5,
+    };
+
+    const converted = api.convertAnthropicMessagesUsage(usage);
+    try std.testing.expectEqual(@as(u64, 100), converted.input_tokens.total.?);
+    try std.testing.expectEqual(@as(u64, 50), converted.output_tokens.total.?);
+}
+
+test "Anthropic config buildUrl" {
+    const allocator = std.testing.allocator;
+
+    const config = config_mod.AnthropicConfig{
+        .provider = "anthropic.messages",
+        .base_url = "https://api.anthropic.com/v1",
+        .headers_fn = struct {
+            fn getHeaders(_: *const config_mod.AnthropicConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+                return std.StringHashMap([]const u8).init(alloc);
+            }
+        }.getHeaders,
+    };
+
+    const url = try config.buildUrl(allocator, "/messages", "claude-sonnet-4-5");
+    defer allocator.free(url);
+
+    try std.testing.expectEqualStrings("https://api.anthropic.com/v1/messages", url);
+}

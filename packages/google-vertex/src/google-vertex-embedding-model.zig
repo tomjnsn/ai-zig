@@ -1,9 +1,11 @@
 const std = @import("std");
 const embedding = @import("../../provider/src/embedding-model/v3/index.zig");
 const shared = @import("../../provider/src/shared/v3/index.zig");
+const provider_utils = @import("provider-utils");
 
 const config_mod = @import("google-vertex-config.zig");
 const options_mod = @import("google-vertex-options.zig");
+const response_types = @import("google-vertex-response.zig");
 
 /// Google Vertex AI Embedding Model
 pub const GoogleVertexEmbeddingModel = struct {
@@ -79,7 +81,7 @@ pub const GoogleVertexEmbeddingModel = struct {
 
         // Check max embeddings
         if (values.len > max_embeddings_per_call) {
-            callback(callback_context, .{ .failure = error.TooManyEmbeddingValues, callback_context);
+            callback(callback_context, .{ .failure = error.TooManyEmbeddingValues });
             return;
         }
 
@@ -158,34 +160,99 @@ pub const GoogleVertexEmbeddingModel = struct {
         if (self.config.headers_fn) |headers_fn| {
             headers = headers_fn(&self.config, request_allocator);
         }
+        headers.put("Content-Type", "application/json") catch {};
 
-        _ = url;
-        _ = headers;
-
-        // For now, return placeholder result
-        // Actual implementation would make HTTP request and parse response
-        var embeddings = result_allocator.alloc([]f32, values.len) catch |err| {
+        // Serialize request body
+        var body_buffer = std.ArrayList(u8).init(request_allocator);
+        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer()) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
-        var total_tokens: u32 = 0;
-        for (embeddings, 0..) |*emb, i| {
-            _ = i;
-            emb.* = result_allocator.alloc(f32, 768) catch |err| {
-                callback(callback_context, .{ .failure = err });
-                return;
-            };
-            @memset(emb.*, 0.0);
-            total_tokens += 10; // Placeholder token count
+
+        // Get HTTP client
+        const http_client = self.config.http_client orelse {
+            callback(callback_context, .{ .failure = error.NoHttpClient });
+            return;
+        };
+
+        // Convert headers to slice
+        var header_list = std.ArrayList(provider_utils.HttpHeader).init(request_allocator);
+        var header_iter = headers.iterator();
+        while (header_iter.next()) |entry| {
+            header_list.append(.{
+                .name = entry.key_ptr.*,
+                .value = entry.value_ptr.*,
+            }) catch {};
         }
 
-        // Convert embeddings to proper format
+        // Create context for callback
+        const ResponseContext = struct {
+            response_body: ?[]const u8 = null,
+            response_error: ?provider_utils.HttpError = null,
+        };
+        var response_ctx = ResponseContext{};
+
+        // Make HTTP request
+        http_client.request(
+            .{
+                .method = .POST,
+                .url = url,
+                .headers = header_list.items,
+                .body = body_buffer.items,
+            },
+            request_allocator,
+            struct {
+                fn onResponse(ctx: ?*anyopaque, response: provider_utils.HttpResponse) void {
+                    const rctx: *ResponseContext = @ptrCast(@alignCast(ctx.?));
+                    rctx.response_body = response.body;
+                }
+            }.onResponse,
+            struct {
+                fn onError(ctx: ?*anyopaque, err: provider_utils.HttpError) void {
+                    const rctx: *ResponseContext = @ptrCast(@alignCast(ctx.?));
+                    rctx.response_error = err;
+                }
+            }.onError,
+            &response_ctx,
+        );
+
+        // Check for errors
+        if (response_ctx.response_error != null) {
+            callback(callback_context, .{ .failure = error.HttpRequestFailed });
+            return;
+        }
+
+        const response_body = response_ctx.response_body orelse {
+            callback(callback_context, .{ .failure = error.NoResponse });
+            return;
+        };
+
+        // Parse response
+        const parsed = response_types.VertexPredictEmbeddingResponse.fromJson(request_allocator, response_body) catch {
+            callback(callback_context, .{ .failure = error.InvalidResponse });
+            return;
+        };
+        const response = parsed.value;
+
+        // Extract embeddings from response
         var embed_list = std.ArrayList(embedding.EmbeddingModelV3Embedding).init(result_allocator);
-        for (embeddings) |emb| {
-            embed_list.append(.{ .embedding = .{ .float = emb } }) catch |err| {
-                callback(callback_context, .{ .failure = err });
-                return;
-            };
+        var total_tokens: u32 = 0;
+
+        if (response.predictions) |predictions| {
+            for (predictions) |pred| {
+                if (pred.embeddings) |emb| {
+                    if (emb.values) |emb_values| {
+                        const values_copy = result_allocator.dupe(f32, emb_values) catch continue;
+                        embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch {};
+
+                        if (emb.statistics) |stats| {
+                            if (stats.token_count) |tc| {
+                                total_tokens += tc;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         const result = embedding.EmbeddingModelV3.EmbedSuccess{
@@ -215,5 +282,24 @@ test "GoogleVertexEmbeddingModel init" {
     );
 
     try std.testing.expectEqualStrings("text-embedding-004", model.getModelId());
-    try std.testing.expectEqual(@as(usize, 2048), model.getMaxEmbeddingsPerCall());
+    try std.testing.expectEqual(@as(usize, 2048), GoogleVertexEmbeddingModel.max_embeddings_per_call);
+}
+
+test "GoogleVertexEmbeddingModel max embeddings constant" {
+    try std.testing.expectEqual(@as(usize, 2048), GoogleVertexEmbeddingModel.max_embeddings_per_call);
+    try std.testing.expectEqual(true, GoogleVertexEmbeddingModel.supports_parallel_calls);
+}
+
+test "Vertex embedding response parsing" {
+    const allocator = std.testing.allocator;
+    const response_json =
+        \\{"predictions":[{"embeddings":{"values":[0.1,0.2,0.3],"statistics":{"token_count":5}}}]}
+    ;
+
+    const parsed = try response_types.VertexPredictEmbeddingResponse.fromJson(allocator, response_json);
+    defer parsed.deinit();
+    const response = parsed.value;
+
+    try std.testing.expect(response.predictions != null);
+    try std.testing.expectEqual(@as(usize, 1), response.predictions.?.len);
 }

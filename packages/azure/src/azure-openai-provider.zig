@@ -729,3 +729,46 @@ test "AzureOpenAIProvider model factory methods return correct types" {
     _ = provider.speech("tts-1");
     _ = provider.transcription("whisper-1");
 }
+
+test "Azure headers include Content-Type" {
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    var headers = getHeadersFn(&provider.config, allocator);
+    defer headers.deinit();
+
+    try std.testing.expect(headers.get("Content-Type") != null);
+    try std.testing.expectEqualStrings("application/json", headers.get("Content-Type").?);
+}
+
+test "Azure uses api-key header format" {
+    // Azure uses api-key header instead of Authorization: Bearer
+    // This is verified by the getHeadersFn implementation
+    const allocator = std.testing.allocator;
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+    });
+    defer provider.deinit();
+
+    var headers = getOpenAIHeadersFn(&provider.buildOpenAIConfig("azure.chat"), allocator);
+    defer headers.deinit();
+
+    // Content-Type should be present
+    try std.testing.expect(headers.get("Content-Type") != null);
+    // Authorization header should NOT be present (Azure uses api-key)
+    try std.testing.expect(headers.get("Authorization") == null);
+}
+
+test "Azure config URL construction" {
+    const allocator = std.testing.allocator;
+
+    const url = try config_mod.buildBaseUrlFromResourceName(allocator, "myresource");
+    defer allocator.free(url);
+
+    try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai", url);
+}

@@ -14,6 +14,8 @@ A comprehensive AI SDK for Zig, ported from the Vercel AI SDK. This SDK provides
 - **Transcription**: Speech-to-text capabilities
 - **Middleware**: Extensible request/response transformation
 - **Memory Safe**: Uses arena allocators for efficient memory management
+- **Testable**: MockHttpClient for unit testing without network calls
+- **Type-Erased HTTP**: Pluggable HTTP client interface via vtables
 
 ## Supported Providers
 
@@ -187,9 +189,34 @@ zig build run-example
 The SDK uses several key patterns:
 
 1. **Arena Allocators**: Request-scoped memory management
-2. **Vtable Pattern**: Interface abstraction for models
-3. **Callback-based Streaming**: Non-blocking I/O
+2. **Vtable Pattern**: Interface abstraction for models and HTTP clients
+3. **Callback-based Streaming**: Non-blocking I/O with SSE parsing
 4. **Provider Abstraction**: Unified interface across providers
+5. **Type-Erased HTTP**: Pluggable `HttpClient` interface for real and mock implementations
+
+### HTTP Client Interface
+
+The SDK uses a type-erased HTTP client interface that allows dependency injection:
+
+```zig
+const provider_utils = @import("provider-utils");
+
+// Use the standard HTTP client (default)
+var provider = openai.createOpenAI(allocator);
+
+// Or inject a mock client for testing
+var mock = provider_utils.MockHttpClient.init(allocator);
+defer mock.deinit();
+
+mock.setResponse(.{
+    .status_code = 200,
+    .body = "{\"choices\":[{\"message\":{\"content\":\"Hello!\"}}]}",
+});
+
+var provider = openai.createOpenAIWithSettings(allocator, .{
+    .http_client = mock.asInterface(),
+});
+```
 
 ## Memory Management
 
@@ -251,7 +278,56 @@ zig-ai-sdk/
 
 ## Requirements
 
-- Zig 0.13.0 or later
+- Zig 0.15.0 or later
+
+## Testing
+
+The SDK includes comprehensive unit tests for all providers:
+
+```bash
+# Run all tests
+zig build test
+```
+
+### MockHttpClient
+
+For unit testing provider implementations without network calls:
+
+```zig
+const allocator = std.testing.allocator;
+
+var mock = provider_utils.MockHttpClient.init(allocator);
+defer mock.deinit();
+
+// Configure expected response
+mock.setResponse(.{
+    .status_code = 200,
+    .body = "{\"id\":\"123\",\"choices\":[...]}",
+});
+
+// Pass to provider
+var provider = openai.createOpenAIWithSettings(allocator, .{
+    .http_client = mock.asInterface(),
+});
+
+// Make request...
+
+// Verify request was made correctly
+const req = mock.lastRequest().?;
+try std.testing.expectEqualStrings("POST", req.method.toString());
+```
+
+## Recent Changes
+
+### v0.2.0 (Current Fork)
+
+- **HTTP Client Interface**: Standardized `HttpClient` type across all providers with vtable-based polymorphism
+- **MockHttpClient**: Added mock HTTP client for testing without network calls
+- **Memory Safety**: Improved allocator passing to `getHeaders()` functions
+- **Google/Vertex HTTP**: Implemented full HTTP layer for Google and Vertex providers (language, embedding, image models)
+- **Response Types**: Added proper response parsing types for Google and Vertex APIs
+- **Anthropic API**: Updated to API version `2024-06-01`
+- **Compliance Tests**: Added comprehensive tests for OpenAI, Anthropic, Azure, Google, and Vertex providers
 
 ## Contributing
 

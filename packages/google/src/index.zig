@@ -84,6 +84,13 @@ pub const ProviderTool = prepare_tools.ProviderTool;
 pub const map_finish = @import("map-google-generative-ai-finish-reason.zig");
 pub const mapGoogleGenerativeAIFinishReason = map_finish.mapGoogleGenerativeAIFinishReason;
 
+// Response types
+pub const response = @import("google-generative-ai-response.zig");
+pub const GoogleGenerateContentResponse = response.GoogleGenerateContentResponse;
+pub const GoogleEmbedContentResponse = response.GoogleEmbedContentResponse;
+pub const GoogleBatchEmbedContentsResponse = response.GoogleBatchEmbedContentsResponse;
+pub const GooglePredictResponse = response.GooglePredictResponse;
+
 test {
     // Run all module tests
     @import("std").testing.refAllDecls(@This());

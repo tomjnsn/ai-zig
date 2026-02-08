@@ -874,3 +874,123 @@ test "OpenAIChatLanguageModel basic" {
     try std.testing.expectEqualStrings("openai.chat", model.getProvider());
     try std.testing.expectEqualStrings("gpt-4o", model.getModelId());
 }
+
+test "OpenAI response parsing - basic completion" {
+    const allocator = std.testing.allocator;
+    const response_json =
+        \\{"id":"chatcmpl-123","object":"chat.completion","created":1677652288,"model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":"Hello! How can I help?"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18}}
+    ;
+
+    const parsed = std.json.parseFromSlice(api.OpenAIChatResponse, allocator, response_json, .{}) catch |err| {
+        std.debug.print("Parse error: {}\n", .{err});
+        return err;
+    };
+    defer parsed.deinit();
+    const response = parsed.value;
+
+    try std.testing.expectEqualStrings("chatcmpl-123", response.id);
+    try std.testing.expectEqualStrings("gpt-4o", response.model);
+    try std.testing.expectEqual(@as(usize, 1), response.choices.len);
+    try std.testing.expectEqualStrings("Hello! How can I help?", response.choices[0].message.content.?);
+    try std.testing.expectEqualStrings("stop", response.choices[0].finish_reason.?);
+    try std.testing.expectEqual(@as(u64, 10), response.usage.?.prompt_tokens);
+    try std.testing.expectEqual(@as(u64, 8), response.usage.?.completion_tokens);
+}
+
+test "OpenAI response parsing - with tool calls" {
+    const allocator = std.testing.allocator;
+    const response_json =
+        \\{"id":"chatcmpl-456","object":"chat.completion","created":1677652288,"model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_123","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"NYC\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":15,"completion_tokens":20,"total_tokens":35}}
+    ;
+
+    const parsed = try std.json.parseFromSlice(api.OpenAIChatResponse, allocator, response_json, .{});
+    defer parsed.deinit();
+    const response = parsed.value;
+
+    try std.testing.expectEqual(@as(usize, 1), response.choices.len);
+    try std.testing.expect(response.choices[0].message.content == null);
+    try std.testing.expectEqual(@as(usize, 1), response.choices[0].message.tool_calls.?.len);
+
+    const tool_call = response.choices[0].message.tool_calls.?[0];
+    try std.testing.expectEqualStrings("call_123", tool_call.id.?);
+    try std.testing.expectEqualStrings("function", tool_call.type);
+    try std.testing.expectEqualStrings("get_weather", tool_call.function.name);
+    try std.testing.expectEqualStrings("{\"location\":\"NYC\"}", tool_call.function.arguments.?);
+}
+
+test "OpenAI finish reason mapping" {
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.stop, map_finish.mapOpenAIFinishReason("stop"));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.length, map_finish.mapOpenAIFinishReason("length"));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.tool_calls, map_finish.mapOpenAIFinishReason("tool_calls"));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.content_filter, map_finish.mapOpenAIFinishReason("content_filter"));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.other, map_finish.mapOpenAIFinishReason("unknown_reason"));
+    try std.testing.expectEqual(lm.LanguageModelV3FinishReason.unknown, map_finish.mapOpenAIFinishReason(null));
+}
+
+test "OpenAI reasoning model detection" {
+    try std.testing.expect(options_mod.isReasoningModel("o1"));
+    try std.testing.expect(options_mod.isReasoningModel("o1-mini"));
+    try std.testing.expect(options_mod.isReasoningModel("o1-preview"));
+    try std.testing.expect(options_mod.isReasoningModel("o3"));
+    try std.testing.expect(options_mod.isReasoningModel("o3-mini"));
+    try std.testing.expect(!options_mod.isReasoningModel("gpt-4o"));
+    try std.testing.expect(!options_mod.isReasoningModel("gpt-4-turbo"));
+    try std.testing.expect(!options_mod.isReasoningModel("gpt-3.5-turbo"));
+}
+
+test "OpenAI request serialization - basic" {
+    // Use arena allocator since serializeRequest allocates many intermediate objects
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const request = api.OpenAIChatRequest{
+        .model = "gpt-4o",
+        .messages = &[_]api.OpenAIChatRequest.RequestMessage{
+            .{ .role = "user", .content = .{ .text = "Hello" } },
+        },
+        .max_tokens = 100,
+        .temperature = 0.7,
+        .stream = false,
+    };
+
+    const body = try serializeRequest(allocator, request);
+
+    // Parse back to verify structure
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, body, .{});
+
+    const obj = parsed.value.object;
+    try std.testing.expectEqualStrings("gpt-4o", obj.get("model").?.string);
+    try std.testing.expectEqual(@as(i64, 100), obj.get("max_tokens").?.integer);
+    try std.testing.expect(obj.get("messages") != null);
+}
+
+test "OpenAI usage conversion" {
+    const usage = api.OpenAIChatResponse.Usage{
+        .prompt_tokens = 100,
+        .completion_tokens = 50,
+        .total_tokens = 150,
+        .prompt_tokens_details = .{ .cached_tokens = 20 },
+        .completion_tokens_details = .{ .reasoning_tokens = 10 },
+    };
+
+    const converted = api.convertOpenAIChatUsage(usage);
+    try std.testing.expectEqual(@as(u64, 100), converted.input_tokens.total.?);
+    try std.testing.expectEqual(@as(u64, 50), converted.output_tokens.total.?);
+}
+
+test "OpenAI streaming chunk parsing" {
+    const allocator = std.testing.allocator;
+    const chunk_json =
+        \\{"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+    ;
+
+    const parsed = try std.json.parseFromSlice(api.OpenAIChatChunk, allocator, chunk_json, .{});
+    defer parsed.deinit();
+    const chunk = parsed.value;
+
+    try std.testing.expectEqualStrings("chatcmpl-123", chunk.id.?);
+    try std.testing.expectEqual(@as(usize, 1), chunk.choices.len);
+    try std.testing.expectEqualStrings("Hello", chunk.choices[0].delta.content.?);
+    try std.testing.expect(chunk.choices[0].finish_reason == null);
+}
