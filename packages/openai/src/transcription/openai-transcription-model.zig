@@ -179,7 +179,7 @@ pub const OpenAITranscriptionModel = struct {
         var response_data: ?[]const u8 = null;
         var response_headers: ?std.StringHashMap([]const u8) = null;
 
-        http_client.post(url, headers, body, request_allocator, struct {
+        try http_client.post(url, headers, body, request_allocator, struct {
             fn onResponse(ctx: *anyopaque, resp_headers: std.StringHashMap([]const u8), resp_body: []const u8) void {
                 const data = @as(*struct { body: *?[]const u8, headers: *?std.StringHashMap([]const u8) }, @ptrCast(@alignCast(ctx)));
                 data.body.* = resp_body;
