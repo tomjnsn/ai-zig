@@ -10,6 +10,8 @@ pub const PostJsonToApiOptions = struct {
     body: json_value.JsonValue,
     abort_signal: ?*std.Thread.ResetEvent = null,
     timeout_ms: ?u64 = null,
+    /// Maximum allowed response body size in bytes. null = no limit.
+    max_response_size: ?usize = null,
 };
 
 /// Options for posting raw data to an API
@@ -20,6 +22,8 @@ pub const PostToApiOptions = struct {
     body_values: ?json_value.JsonValue = null,
     abort_signal: ?*std.Thread.ResetEvent = null,
     timeout_ms: ?u64 = null,
+    /// Maximum allowed response body size in bytes. null = no limit.
+    max_response_size: ?usize = null,
 };
 
 /// Result of an API call
@@ -421,4 +425,63 @@ pub fn postJsonToApiStreaming(
             .ctx = ctx,
         },
     );
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+const mock_client_mod = @import("http/mock-client.zig");
+
+test "rejects response exceeding max size" {
+    const allocator = std.testing.allocator;
+
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    // Create a response body larger than the limit
+    const large_body = "x" ** 1024; // 1KB body
+    mock.setResponse(.{
+        .status_code = 200,
+        .body = large_body,
+    });
+
+    var error_received = false;
+    var error_message: []const u8 = "";
+
+    const TestCtx = struct {
+        error_received: *bool,
+        error_message: *[]const u8,
+    };
+
+    var test_ctx = TestCtx{
+        .error_received = &error_received,
+        .error_message = &error_message,
+    };
+
+    postToApi(
+        mock.asInterface(),
+        .{
+            .url = "https://api.example.com/test",
+            .body = "{}",
+            .max_response_size = 512, // Limit to 512 bytes
+        },
+        allocator,
+        .{
+            .on_success = struct {
+                fn handler(_: ?*anyopaque, _: ApiResponse) void {}
+            }.handler,
+            .on_error = struct {
+                fn handler(ctx: ?*anyopaque, err: ApiError) void {
+                    const c: *TestCtx = @ptrCast(@alignCast(ctx));
+                    c.error_received.* = true;
+                    c.error_message.* = err.info.message();
+                }
+            }.handler,
+            .ctx = &test_ctx,
+        },
+    );
+
+    try std.testing.expect(error_received);
+    try std.testing.expect(std.mem.indexOf(u8, error_message, "exceeds maximum") != null);
 }

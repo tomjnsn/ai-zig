@@ -53,6 +53,8 @@ pub const HttpClient = struct {
         headers: []const Header,
         body: ?[]const u8 = null,
         timeout_ms: ?u64 = null,
+        /// Maximum allowed response body size in bytes. null = no limit.
+        max_response_size: ?usize = null,
     };
 
     /// HTTP methods
@@ -132,6 +134,7 @@ pub const HttpClient = struct {
             aborted,
             dns_error,
             too_many_redirects,
+            response_too_large,
             unknown,
         };
 
