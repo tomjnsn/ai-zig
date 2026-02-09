@@ -112,23 +112,60 @@ pub fn embed(
     allocator: std.mem.Allocator,
     options: EmbedOptions,
 ) EmbedError!EmbedResult {
-    _ = allocator;
-
     // Validate input
     if (options.value.len == 0) {
         return EmbedError.InvalidInput;
     }
 
-    // TODO: Call model.doEmbed
-    // For now, return a placeholder result
+    // Call model.doEmbed with a single-value slice
+    const values = [_][]const u8{options.value};
+    const call_options = provider_types.EmbeddingModelCallOptions{
+        .values = &values,
+    };
+
+    const CallbackCtx = struct {
+        result: ?EmbeddingModelV3.EmbedResult = null,
+    };
+    var cb_ctx = CallbackCtx{};
+    const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
+
+    options.model.doEmbed(
+        call_options,
+        allocator,
+        struct {
+            fn onResult(ptr: ?*anyopaque, result: EmbeddingModelV3.EmbedResult) void {
+                const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
+                ctx.result = result;
+            }
+        }.onResult,
+        ctx_ptr,
+    );
+
+    const embed_success = switch (cb_ctx.result orelse return EmbedError.ModelError) {
+        .success => |s| s,
+        .failure => return EmbedError.ModelError,
+    };
+
+    // Convert f32 embeddings to f64
+    if (embed_success.embeddings.len == 0) {
+        return EmbedError.ModelError;
+    }
+
+    const f32_values = embed_success.embeddings[0];
+    const f64_values = try allocator.alloc(f64, f32_values.len);
+    for (f32_values, 0..) |v, i| {
+        f64_values[i] = @as(f64, @floatCast(v));
+    }
 
     return EmbedResult{
         .embedding = .{
-            .values = &[_]f64{},
+            .values = f64_values,
         },
-        .usage = .{},
+        .usage = .{
+            .tokens = if (embed_success.usage) |u| u.tokens else null,
+        },
         .response = .{
-            .model_id = "placeholder",
+            .model_id = options.model.getModelId(),
         },
         .warnings = null,
     };
@@ -311,8 +348,9 @@ test "embed returns embeddings from mock provider" {
         .model = &model,
         .value = "test input",
     });
+    defer std.testing.allocator.free(result.embedding.values);
 
-    // Should have 3 embedding values (currently returns empty - this test should FAIL)
+    // Should have 3 embedding values
     try std.testing.expectEqual(@as(usize, 3), result.embedding.values.len);
     try std.testing.expectApproxEqAbs(@as(f64, 0.1), result.embedding.values[0], 0.001);
     try std.testing.expectApproxEqAbs(@as(f64, 0.2), result.embedding.values[1], 0.001);
