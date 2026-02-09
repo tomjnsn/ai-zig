@@ -10,10 +10,23 @@ const LanguageModelV3StreamPart = @import("language-model-v3-stream-part.zig").L
 const LanguageModelV3ResponseMetadata = @import("language-model-v3-response-metadata.zig").LanguageModelV3ResponseMetadata;
 
 /// Specification for a language model that implements the language model interface version 3.
+///
+/// ## Lifetime Requirements
+/// This is a type-erased interface using vtable dispatch. The caller must ensure:
+/// - `impl` must outlive every use of this `LanguageModelV3` value.
+/// - `vtable` should point to a `const` with static lifetime (typically a file-level `const`).
+/// - Do not store a `LanguageModelV3` beyond the lifetime of the concrete model it wraps.
+///
+/// ## Correct Usage
+/// ```
+/// var model = provider.languageModel("model-id");
+/// const iface = model.asLanguageModel();  // borrows &model
+/// // Use iface while model is alive
+/// ```
 pub const LanguageModelV3 = struct {
-    /// VTable for dynamic dispatch
+    /// VTable for dynamic dispatch (must have static lifetime)
     vtable: *const VTable,
-    /// Implementation pointer
+    /// Type-erased implementation pointer (must outlive this struct)
     impl: *anyopaque,
 
     /// The language model must specify which language model interface version it implements.

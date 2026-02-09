@@ -20,7 +20,9 @@ const std = @import("std");
 ///
 /// See `MockHttpClient` and `StdHttpClient` for reference implementations.
 pub const HttpClient = struct {
+    /// VTable for dynamic dispatch (must have static lifetime)
     vtable: *const VTable,
+    /// Type-erased implementation pointer (must outlive this struct)
     impl: *anyopaque,
 
     pub const VTable = struct {

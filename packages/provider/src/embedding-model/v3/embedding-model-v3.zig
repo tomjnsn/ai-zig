@@ -17,10 +17,16 @@ pub const EmbeddingModelCallOptions = struct {
 
 /// Specification for an embedding model that implements version 3.
 /// It is specific to text embeddings.
+///
+/// ## Lifetime Requirements
+/// This is a type-erased interface using vtable dispatch. The caller must ensure:
+/// - `impl` must outlive every use of this `EmbeddingModelV3` value.
+/// - `vtable` should point to a `const` with static lifetime (typically a file-level `const`).
+/// - Do not store an `EmbeddingModelV3` beyond the lifetime of the concrete model it wraps.
 pub const EmbeddingModelV3 = struct {
-    /// VTable for dynamic dispatch
+    /// VTable for dynamic dispatch (must have static lifetime)
     vtable: *const VTable,
-    /// Implementation pointer
+    /// Type-erased implementation pointer (must outlive this struct)
     impl: *anyopaque,
 
     pub const specification_version = "v3";
