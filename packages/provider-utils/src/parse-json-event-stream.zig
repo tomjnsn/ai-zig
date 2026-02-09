@@ -10,17 +10,25 @@ pub const EventSourceParser = struct {
     event_type: ?[]const u8,
     has_data_field: bool,
     allocator: std.mem.Allocator,
+    /// Maximum buffer size in bytes. null = no limit.
+    max_buffer_size: ?usize,
 
     const Self = @This();
 
-    /// Initialize a new event source parser
+    /// Initialize a new event source parser with no buffer limit
     pub fn init(allocator: std.mem.Allocator) Self {
+        return initWithMaxBuffer(allocator, null);
+    }
+
+    /// Initialize a new event source parser with a maximum buffer size
+    pub fn initWithMaxBuffer(allocator: std.mem.Allocator, max_buffer_size: ?usize) Self {
         return .{
             .buffer = std.array_list.Managed(u8).init(allocator),
             .data_buffer = std.array_list.Managed(u8).init(allocator),
             .event_type = null,
             .has_data_field = false,
             .allocator = allocator,
+            .max_buffer_size = max_buffer_size,
         };
     }
 
@@ -57,6 +65,12 @@ pub const EventSourceParser = struct {
         on_event: *const fn (ctx: ?*anyopaque, event: Event) void,
         ctx: ?*anyopaque,
     ) !void {
+        // Check buffer size limit before appending
+        if (self.max_buffer_size) |max_size| {
+            if (self.buffer.items.len + data.len > max_size) {
+                return error.BufferLimitExceeded;
+            }
+        }
         try self.buffer.appendSlice(data);
 
         // Process complete lines
