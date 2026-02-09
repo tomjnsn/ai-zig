@@ -103,6 +103,10 @@ pub const security = @import("provider").security;
 pub const redactApiKey = security.redactApiKey;
 pub const containsApiKey = security.containsApiKey;
 
+// Safe casting
+pub const safe_cast = @import("safe-cast.zig");
+pub const safeCast = safe_cast.safeCast;
+
 // URL validation
 pub const url_validation = @import("url-validation.zig");
 pub const validateUrl = url_validation.validateUrl;
