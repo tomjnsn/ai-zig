@@ -11,6 +11,9 @@ pub const LoadApiKeyOptions = struct {
     api_key_parameter_name: []const u8 = "apiKey",
     /// Description of the provider for error messages
     description: []const u8,
+    /// Allocator for env var lookup. Caller must free the returned key
+    /// if it was loaded from an environment variable.
+    allocator: std.mem.Allocator = std.heap.page_allocator,
 };
 
 /// Load an API key from the provided value or environment variable.
@@ -26,7 +29,7 @@ pub fn loadApiKey(options: LoadApiKeyOptions) ![]const u8 {
 
     // Try to load from environment variable
     const env_value = std.process.getEnvVarOwned(
-        std.heap.page_allocator,
+        options.allocator,
         options.environment_variable_name,
     ) catch |err| {
         switch (err) {
@@ -46,6 +49,7 @@ pub fn loadApiKey(options: LoadApiKeyOptions) ![]const u8 {
     };
 
     if (env_value.len == 0) {
+        options.allocator.free(env_value);
         std.log.err(
             "{s} API key is empty in the {s} environment variable.",
             .{ options.description, options.environment_variable_name },
@@ -68,10 +72,10 @@ pub fn hasApiKey(options: LoadApiKeyOptions) bool {
     }
 
     const env_value = std.process.getEnvVarOwned(
-        std.heap.page_allocator,
+        options.allocator,
         options.environment_variable_name,
     ) catch return false;
-    defer std.heap.page_allocator.free(env_value);
+    defer options.allocator.free(env_value);
 
     return env_value.len > 0;
 }
@@ -84,6 +88,8 @@ pub const LoadSettingOptions = struct {
     environment_variable_name: ?[]const u8 = null,
     /// Description for error messages
     description: ?[]const u8 = null,
+    /// Allocator for env var lookup
+    allocator: std.mem.Allocator = std.heap.page_allocator,
 };
 
 /// Load an optional setting from value or environment
@@ -96,12 +102,12 @@ pub fn loadOptionalSetting(options: LoadSettingOptions) ?[]const u8 {
     // Try to load from environment variable
     if (options.environment_variable_name) |env_name| {
         const env_value = std.process.getEnvVarOwned(
-            std.heap.page_allocator,
+            options.allocator,
             env_name,
         ) catch return null;
 
         if (env_value.len == 0) {
-            std.heap.page_allocator.free(env_value);
+            options.allocator.free(env_value);
             return null;
         }
 
@@ -275,6 +281,18 @@ test "loadOptionalSetting prefers direct value over env" {
     });
     try std.testing.expect(result != null);
     try std.testing.expectEqualStrings("direct", result.?);
+}
+
+test "loadApiKey no memory leak on failure" {
+    // std.testing.allocator detects leaks automatically
+    const result = loadApiKey(.{
+        .api_key = null,
+        .environment_variable_name = "NONEXISTENT_LEAK_TEST_VAR",
+        .description = "Leak Test",
+        .allocator = std.testing.allocator,
+    });
+    try std.testing.expectError(error.LoadApiKeyError, result);
+    // If there's a leak, std.testing.allocator will report it
 }
 
 test "withoutTrailingSlash multiple slashes" {
