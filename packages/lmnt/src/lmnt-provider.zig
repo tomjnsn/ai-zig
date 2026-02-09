@@ -1,6 +1,6 @@
 const std = @import("std");
 const provider_utils = @import("provider-utils");
-const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
+const provider_v3 = @import("provider").provider;
 
 pub const LmntProviderSettings = struct {
     base_url: ?[]const u8 = null,
@@ -197,4 +197,225 @@ test "LmntProvider basic" {
     var prov = createLmntWithSettings(allocator, .{});
     defer prov.deinit();
     try std.testing.expectEqualStrings("lmnt", prov.getProvider());
+}
+
+test "LmntProvider uses default base URL" {
+    const allocator = std.testing.allocator;
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://api.lmnt.com", prov.base_url);
+}
+
+test "LmntProvider uses custom base URL" {
+    const allocator = std.testing.allocator;
+    var prov = createLmntWithSettings(allocator, .{
+        .base_url = "https://custom.lmnt.test",
+    });
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://custom.lmnt.test", prov.base_url);
+}
+
+test "LmntProvider specification version" {
+    try std.testing.expectEqualStrings("v3", LmntProvider.specification_version);
+}
+
+test "LmntProvider creates speech model with correct model ID" {
+    const allocator = std.testing.allocator;
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    try std.testing.expectEqualStrings("aurora", model.getModelId());
+}
+
+test "LmntProvider creates speech model with correct provider" {
+    const allocator = std.testing.allocator;
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    try std.testing.expectEqualStrings("lmnt.speech", model.getProvider());
+}
+
+test "LmntProvider speech model inherits base URL" {
+    const allocator = std.testing.allocator;
+    var prov = createLmntWithSettings(allocator, .{
+        .base_url = "https://custom.lmnt.test",
+    });
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    try std.testing.expectEqualStrings("https://custom.lmnt.test", model.base_url);
+}
+
+test "LmntProvider speech() is alias for speechModel()" {
+    const allocator = std.testing.allocator;
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model1 = prov.speechModel("aurora");
+    const model2 = prov.speech("aurora");
+    try std.testing.expectEqualStrings(model1.getModelId(), model2.getModelId());
+    try std.testing.expectEqualStrings(model1.getProvider(), model2.getProvider());
+    try std.testing.expectEqualStrings(model1.base_url, model2.base_url);
+}
+
+test "LmntProvider createLmnt is equivalent to createLmntWithSettings with defaults" {
+    const allocator = std.testing.allocator;
+    var prov1 = createLmnt(allocator);
+    defer prov1.deinit();
+    var prov2 = createLmntWithSettings(allocator, .{});
+    defer prov2.deinit();
+    try std.testing.expectEqualStrings(prov1.base_url, prov2.base_url);
+    try std.testing.expectEqualStrings(prov1.getProvider(), prov2.getProvider());
+}
+
+test "LmntProvider settings stores api_key" {
+    const allocator = std.testing.allocator;
+    var prov = createLmntWithSettings(allocator, .{
+        .api_key = "test-key-123",
+    });
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("test-key-123", prov.settings.api_key.?);
+}
+
+test "LmntProvider settings default api_key is null" {
+    const allocator = std.testing.allocator;
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    try std.testing.expect(prov.settings.api_key == null);
+}
+
+test "LmntProvider settings default headers is null" {
+    const allocator = std.testing.allocator;
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    try std.testing.expect(prov.settings.headers == null);
+}
+
+test "LmntProvider settings default http_client is null" {
+    const allocator = std.testing.allocator;
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    try std.testing.expect(prov.settings.http_client == null);
+}
+
+test "SpeechModels constants" {
+    try std.testing.expectEqualStrings("aurora", SpeechModels.aurora);
+    try std.testing.expectEqualStrings("blizzard", SpeechModels.blizzard);
+}
+
+test "LmntSpeechModel buildRequestBody with defaults" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    const body = try model.buildRequestBody("Hello world", .{});
+    const obj = body.object;
+    try std.testing.expectEqualStrings("Hello world", obj.get("text").?.string);
+    try std.testing.expectEqualStrings("lily", obj.get("voice").?.string);
+    // optional fields should not be present
+    try std.testing.expect(obj.get("speed") == null);
+    try std.testing.expect(obj.get("format") == null);
+    try std.testing.expect(obj.get("sample_rate") == null);
+    try std.testing.expect(obj.get("length") == null);
+    try std.testing.expect(obj.get("return_durations") == null);
+}
+
+test "LmntSpeechModel buildRequestBody with custom voice" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    const body = try model.buildRequestBody("Test text", .{
+        .voice = "morgan",
+    });
+    const obj = body.object;
+    try std.testing.expectEqualStrings("morgan", obj.get("voice").?.string);
+}
+
+test "LmntSpeechModel buildRequestBody with all options" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    const body = try model.buildRequestBody("Full options test", .{
+        .voice = "cove",
+        .speed = 1.5,
+        .format = "mp3",
+        .sample_rate = 24000,
+        .length = 10.0,
+        .return_durations = true,
+    });
+    const obj = body.object;
+    try std.testing.expectEqualStrings("Full options test", obj.get("text").?.string);
+    try std.testing.expectEqualStrings("cove", obj.get("voice").?.string);
+    try std.testing.expectApproxEqAbs(@as(f64, 1.5), obj.get("speed").?.float, 0.001);
+    try std.testing.expectEqualStrings("mp3", obj.get("format").?.string);
+    try std.testing.expectEqual(@as(i64, 24000), obj.get("sample_rate").?.integer);
+    try std.testing.expectApproxEqAbs(@as(f64, 10.0), obj.get("length").?.float, 0.001);
+    try std.testing.expectEqual(true, obj.get("return_durations").?.bool);
+}
+
+test "LmntSpeechModel buildRequestBody with speed only" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("blizzard");
+    const body = try model.buildRequestBody("Speed test", .{
+        .speed = 0.8,
+    });
+    const obj = body.object;
+    try std.testing.expectEqualStrings("Speed test", obj.get("text").?.string);
+    try std.testing.expectEqualStrings("lily", obj.get("voice").?.string);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.8), obj.get("speed").?.float, 0.001);
+    try std.testing.expect(obj.get("format") == null);
+}
+
+test "LmntSpeechModel buildRequestBody with format wav" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    const body = try model.buildRequestBody("Wav test", .{
+        .format = "wav",
+    });
+    try std.testing.expectEqualStrings("wav", body.object.get("format").?.string);
+}
+
+test "LmntSpeechModel buildRequestBody with return_durations false" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var prov = createLmnt(allocator);
+    defer prov.deinit();
+    const model = prov.speechModel("aurora");
+    const body = try model.buildRequestBody("Duration test", .{
+        .return_durations = false,
+    });
+    try std.testing.expectEqual(false, body.object.get("return_durations").?.bool);
+}
+
+test "LmntSpeechModel init sets fields correctly" {
+    const allocator = std.testing.allocator;
+    const model = LmntSpeechModel.init(allocator, "blizzard", "https://api.lmnt.com", .{});
+    try std.testing.expectEqualStrings("blizzard", model.model_id);
+    try std.testing.expectEqualStrings("https://api.lmnt.com", model.base_url);
+    try std.testing.expectEqualStrings("lmnt.speech", model.getProvider());
+}
+
+test "SpeechOptions defaults are all null" {
+    const opts = SpeechOptions{};
+    try std.testing.expect(opts.voice == null);
+    try std.testing.expect(opts.speed == null);
+    try std.testing.expect(opts.format == null);
+    try std.testing.expect(opts.sample_rate == null);
+    try std.testing.expect(opts.length == null);
+    try std.testing.expect(opts.return_durations == null);
 }

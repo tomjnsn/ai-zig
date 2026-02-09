@@ -1,6 +1,6 @@
 const std = @import("std");
 const provider_utils = @import("provider-utils");
-const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
+const provider_v3 = @import("provider").provider;
 
 pub const AssemblyAIProviderSettings = struct {
     base_url: ?[]const u8 = null,
@@ -296,4 +296,284 @@ test "AssemblyAIProvider basic" {
     var prov = createAssemblyAIWithSettings(allocator, .{});
     defer prov.deinit();
     try std.testing.expectEqualStrings("assemblyai", prov.getProvider());
+}
+
+test "AssemblyAIProvider default base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createAssemblyAI(allocator);
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://api.assemblyai.com", prov.base_url);
+}
+
+test "AssemblyAIProvider custom base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createAssemblyAIWithSettings(allocator, .{
+        .base_url = "https://custom.assemblyai.com",
+    });
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://custom.assemblyai.com", prov.base_url);
+}
+
+test "AssemblyAIProvider specification_version" {
+    try std.testing.expectEqualStrings("v3", AssemblyAIProvider.specification_version);
+}
+
+test "AssemblyAIProvider transcriptionModel creates model with correct properties" {
+    const allocator = std.testing.allocator;
+    var prov = createAssemblyAI(allocator);
+    defer prov.deinit();
+
+    const model = prov.transcriptionModel("best");
+    try std.testing.expectEqualStrings("best", model.getModelId());
+    try std.testing.expectEqualStrings("assemblyai.transcription", model.getProvider());
+    try std.testing.expectEqualStrings("https://api.assemblyai.com", model.base_url);
+}
+
+test "AssemblyAIProvider transcription alias" {
+    const allocator = std.testing.allocator;
+    var prov = createAssemblyAI(allocator);
+    defer prov.deinit();
+
+    const model = prov.transcription("nano");
+    try std.testing.expectEqualStrings("nano", model.getModelId());
+    try std.testing.expectEqualStrings("assemblyai.transcription", model.getProvider());
+}
+
+test "AssemblyAIProvider languageModel creates LeMUR model" {
+    const allocator = std.testing.allocator;
+    var prov = createAssemblyAI(allocator);
+    defer prov.deinit();
+
+    const model = prov.languageModel("default");
+    try std.testing.expectEqualStrings("default", model.getModelId());
+    try std.testing.expectEqualStrings("assemblyai.lemur", model.getProvider());
+    try std.testing.expectEqualStrings("https://api.assemblyai.com", model.base_url);
+}
+
+test "TranscriptionModels constants" {
+    try std.testing.expectEqualStrings("best", TranscriptionModels.best);
+    try std.testing.expectEqualStrings("nano", TranscriptionModels.nano);
+    try std.testing.expectEqualStrings("conformer-2", TranscriptionModels.conformer_2);
+}
+
+test "TranscriptionOptions default values" {
+    const options = TranscriptionOptions{};
+    try std.testing.expect(options.language_code == null);
+    try std.testing.expect(options.language_detection == null);
+    try std.testing.expect(options.punctuate == null);
+    try std.testing.expect(options.format_text == null);
+    try std.testing.expect(options.disfluencies == null);
+    try std.testing.expect(options.speaker_labels == null);
+    try std.testing.expect(options.speakers_expected == null);
+    try std.testing.expect(options.word_boost == null);
+    try std.testing.expect(options.boost_param == null);
+    try std.testing.expect(options.filter_profanity == null);
+    try std.testing.expect(options.redact_pii == null);
+    try std.testing.expect(options.auto_chapters == null);
+    try std.testing.expect(options.auto_highlights == null);
+    try std.testing.expect(options.content_safety == null);
+    try std.testing.expect(options.iab_categories == null);
+    try std.testing.expect(options.sentiment_analysis == null);
+    try std.testing.expect(options.entity_detection == null);
+    try std.testing.expect(options.summarization == null);
+    try std.testing.expect(options.summary_model == null);
+    try std.testing.expect(options.summary_type == null);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with audio_url only" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const options = TranscriptionOptions{};
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("https://example.com/audio.mp3", body.object.get("audio_url").?.string);
+    try std.testing.expect(body.object.get("language_code") == null);
+    try std.testing.expect(body.object.get("speaker_labels") == null);
+    try std.testing.expect(body.object.get("summarization") == null);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with language options" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .language_code = "en_us",
+        .language_detection = true,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("en_us", body.object.get("language_code").?.string);
+    try std.testing.expectEqual(true, body.object.get("language_detection").?.bool);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with formatting options" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .punctuate = true,
+        .format_text = true,
+        .disfluencies = false,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("punctuate").?.bool);
+    try std.testing.expectEqual(true, body.object.get("format_text").?.bool);
+    try std.testing.expectEqual(false, body.object.get("disfluencies").?.bool);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with speaker labels" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .speaker_labels = true,
+        .speakers_expected = 3,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("speaker_labels").?.bool);
+    try std.testing.expectEqual(@as(i64, 3), body.object.get("speakers_expected").?.integer);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with word_boost" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const boost_words = &[_][]const u8{ "Kubernetes", "Docker", "Terraform" };
+    const options = TranscriptionOptions{
+        .word_boost = boost_words,
+        .boost_param = "high",
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer {
+        body.object.get("word_boost").?.array.deinit();
+        body.object.deinit();
+    }
+
+    const arr = body.object.get("word_boost").?.array;
+    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try std.testing.expectEqualStrings("Kubernetes", arr.items[0].string);
+    try std.testing.expectEqualStrings("Docker", arr.items[1].string);
+    try std.testing.expectEqualStrings("Terraform", arr.items[2].string);
+    try std.testing.expectEqualStrings("high", body.object.get("boost_param").?.string);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with content moderation" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .filter_profanity = true,
+        .redact_pii = true,
+        .content_safety = true,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("filter_profanity").?.bool);
+    try std.testing.expectEqual(true, body.object.get("redact_pii").?.bool);
+    try std.testing.expectEqual(true, body.object.get("content_safety").?.bool);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with audio intelligence" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .auto_chapters = true,
+        .auto_highlights = true,
+        .iab_categories = true,
+        .sentiment_analysis = true,
+        .entity_detection = true,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("auto_chapters").?.bool);
+    try std.testing.expectEqual(true, body.object.get("auto_highlights").?.bool);
+    try std.testing.expectEqual(true, body.object.get("iab_categories").?.bool);
+    try std.testing.expectEqual(true, body.object.get("sentiment_analysis").?.bool);
+    try std.testing.expectEqual(true, body.object.get("entity_detection").?.bool);
+}
+
+test "AssemblyAITranscriptionModel buildRequestBody with summarization" {
+    const allocator = std.testing.allocator;
+    const settings = AssemblyAIProviderSettings{};
+    const model = AssemblyAITranscriptionModel.init(
+        allocator,
+        "best",
+        "https://api.assemblyai.com",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .summarization = true,
+        .summary_model = "informative",
+        .summary_type = "bullets",
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("summarization").?.bool);
+    try std.testing.expectEqualStrings("informative", body.object.get("summary_model").?.string);
+    try std.testing.expectEqualStrings("bullets", body.object.get("summary_type").?.string);
+}
+
+test "AssemblyAITranscriptionModel model with custom base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createAssemblyAIWithSettings(allocator, .{
+        .base_url = "https://custom.assemblyai.com",
+    });
+    defer prov.deinit();
+
+    const model = prov.transcriptionModel("nano");
+    try std.testing.expectEqualStrings("https://custom.assemblyai.com", model.base_url);
 }

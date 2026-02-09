@@ -35,3 +35,19 @@ test "buildChatCompletionsUrl" {
     defer allocator.free(url);
     try std.testing.expectEqualStrings("https://api.deepseek.com/chat/completions", url);
 }
+
+test "buildChatCompletionsUrl custom base" {
+    const allocator = std.testing.allocator;
+    const url = try buildChatCompletionsUrl(allocator, "https://custom.proxy.com/v1");
+    defer allocator.free(url);
+    try std.testing.expectEqualStrings("https://custom.proxy.com/v1/chat/completions", url);
+}
+
+test "DeepSeekConfig defaults" {
+    const config = DeepSeekConfig{};
+    try std.testing.expectEqualStrings("deepseek", config.provider);
+    try std.testing.expectEqualStrings("https://api.deepseek.com", config.base_url);
+    try std.testing.expect(config.headers_fn == null);
+    try std.testing.expect(config.http_client == null);
+    try std.testing.expect(config.generate_id == null);
+}

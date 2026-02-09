@@ -1,6 +1,6 @@
 const std = @import("std");
 const provider_utils = @import("provider-utils");
-const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
+const provider_v3 = @import("provider").provider;
 
 pub const LumaProviderSettings = struct {
     base_url: ?[]const u8 = null,
@@ -142,7 +142,112 @@ pub fn createLumaWithSettings(
 
 test "LumaProvider basic" {
     const allocator = std.testing.allocator;
-    var provider = createLumaWithSettings(allocator, .{});
-    defer provider.deinit();
-    try std.testing.expectEqualStrings("luma", provider.getProvider());
+    var prov = createLumaWithSettings(allocator, .{});
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("luma", prov.getProvider());
+}
+
+test "LumaProvider uses default base URL" {
+    const allocator = std.testing.allocator;
+    var prov = createLuma(allocator);
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://api.lumalabs.ai", prov.base_url);
+}
+
+test "LumaProvider uses custom base URL" {
+    const allocator = std.testing.allocator;
+    var prov = createLumaWithSettings(allocator, .{
+        .base_url = "https://custom.luma.test",
+    });
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://custom.luma.test", prov.base_url);
+}
+
+test "LumaProvider specification version" {
+    try std.testing.expectEqualStrings("v3", LumaProvider.specification_version);
+}
+
+test "LumaProvider creates image model with correct model ID" {
+    const allocator = std.testing.allocator;
+    var prov = createLuma(allocator);
+    defer prov.deinit();
+    const model = prov.imageModel("photon-1");
+    try std.testing.expectEqualStrings("photon-1", model.getModelId());
+}
+
+test "LumaProvider creates image model with correct provider" {
+    const allocator = std.testing.allocator;
+    var prov = createLuma(allocator);
+    defer prov.deinit();
+    const model = prov.imageModel("photon-1");
+    try std.testing.expectEqualStrings("luma.image", model.getProvider());
+}
+
+test "LumaProvider image model inherits base URL" {
+    const allocator = std.testing.allocator;
+    var prov = createLumaWithSettings(allocator, .{
+        .base_url = "https://custom.luma.test",
+    });
+    defer prov.deinit();
+    const model = prov.imageModel("photon-1");
+    try std.testing.expectEqualStrings("https://custom.luma.test", model.base_url);
+}
+
+test "LumaProvider image() is alias for imageModel()" {
+    const allocator = std.testing.allocator;
+    var prov = createLuma(allocator);
+    defer prov.deinit();
+    const model1 = prov.imageModel("photon-1");
+    const model2 = prov.image("photon-1");
+    try std.testing.expectEqualStrings(model1.getModelId(), model2.getModelId());
+    try std.testing.expectEqualStrings(model1.getProvider(), model2.getProvider());
+    try std.testing.expectEqualStrings(model1.base_url, model2.base_url);
+}
+
+test "LumaProvider createLuma is equivalent to createLumaWithSettings with defaults" {
+    const allocator = std.testing.allocator;
+    var prov1 = createLuma(allocator);
+    defer prov1.deinit();
+    var prov2 = createLumaWithSettings(allocator, .{});
+    defer prov2.deinit();
+    try std.testing.expectEqualStrings(prov1.base_url, prov2.base_url);
+    try std.testing.expectEqualStrings(prov1.getProvider(), prov2.getProvider());
+}
+
+test "LumaImageModel init sets fields correctly" {
+    const allocator = std.testing.allocator;
+    const model = LumaImageModel.init(allocator, "photon-flash-1", "https://api.lumalabs.ai");
+    try std.testing.expectEqualStrings("photon-flash-1", model.model_id);
+    try std.testing.expectEqualStrings("https://api.lumalabs.ai", model.base_url);
+    try std.testing.expectEqualStrings("luma.image", model.getProvider());
+}
+
+test "LumaProvider settings stores api_key" {
+    const allocator = std.testing.allocator;
+    var prov = createLumaWithSettings(allocator, .{
+        .api_key = "test-key-123",
+    });
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("test-key-123", prov.settings.api_key.?);
+}
+
+test "LumaProvider settings default api_key is null" {
+    const allocator = std.testing.allocator;
+    var prov = createLuma(allocator);
+    defer prov.deinit();
+    try std.testing.expect(prov.settings.api_key == null);
+}
+
+test "LumaProvider settings default headers is null" {
+    const allocator = std.testing.allocator;
+    var prov = createLuma(allocator);
+    defer prov.deinit();
+    try std.testing.expect(prov.settings.headers == null);
+}
+
+test "LumaProvider settings default http_client is null" {
+    const allocator = std.testing.allocator;
+    var prov = createLuma(allocator);
+    defer prov.deinit();
+    try std.testing.expect(prov.settings.http_client == null);
 }

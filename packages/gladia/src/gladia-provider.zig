@@ -1,6 +1,6 @@
 const std = @import("std");
 const provider_utils = @import("provider-utils");
-const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
+const provider_v3 = @import("provider").provider;
 
 pub const GladiaProviderSettings = struct {
     base_url: ?[]const u8 = null,
@@ -239,4 +239,252 @@ test "GladiaProvider basic" {
     var prov = createGladiaWithSettings(allocator, .{});
     defer prov.deinit();
     try std.testing.expectEqualStrings("gladia", prov.getProvider());
+}
+
+test "GladiaProvider default base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createGladia(allocator);
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://api.gladia.io", prov.base_url);
+}
+
+test "GladiaProvider custom base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createGladiaWithSettings(allocator, .{
+        .base_url = "https://custom.gladia.io",
+    });
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://custom.gladia.io", prov.base_url);
+}
+
+test "GladiaProvider specification_version" {
+    try std.testing.expectEqualStrings("v3", GladiaProvider.specification_version);
+}
+
+test "GladiaProvider transcriptionModel creates model with correct properties" {
+    const allocator = std.testing.allocator;
+    var prov = createGladia(allocator);
+    defer prov.deinit();
+
+    const model = prov.transcriptionModel("enhanced");
+    try std.testing.expectEqualStrings("enhanced", model.getModelId());
+    try std.testing.expectEqualStrings("gladia.transcription", model.getProvider());
+    try std.testing.expectEqualStrings("https://api.gladia.io", model.base_url);
+}
+
+test "GladiaProvider transcription alias" {
+    const allocator = std.testing.allocator;
+    var prov = createGladia(allocator);
+    defer prov.deinit();
+
+    const model = prov.transcription("fast");
+    try std.testing.expectEqualStrings("fast", model.getModelId());
+    try std.testing.expectEqualStrings("gladia.transcription", model.getProvider());
+}
+
+test "TranscriptionModels constants" {
+    try std.testing.expectEqualStrings("enhanced", TranscriptionModels.enhanced);
+    try std.testing.expectEqualStrings("fast", TranscriptionModels.fast);
+}
+
+test "TranscriptionOptions default values" {
+    const options = TranscriptionOptions{};
+    try std.testing.expect(options.language == null);
+    try std.testing.expect(options.language_behaviour == null);
+    try std.testing.expect(options.toggle_diarization == null);
+    try std.testing.expect(options.diarization_max_speakers == null);
+    try std.testing.expect(options.toggle_direct_translate == null);
+    try std.testing.expect(options.target_translation_language == null);
+    try std.testing.expect(options.toggle_text_emotion_recognition == null);
+    try std.testing.expect(options.toggle_summarization == null);
+    try std.testing.expect(options.toggle_chapterization == null);
+    try std.testing.expect(options.toggle_noise_reduction == null);
+    try std.testing.expect(options.output_format == null);
+    try std.testing.expect(options.custom_vocabulary == null);
+    try std.testing.expect(options.custom_spelling == null);
+    try std.testing.expect(options.webhook_url == null);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with audio_url only" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "enhanced",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const options = TranscriptionOptions{};
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("https://example.com/audio.mp3", body.object.get("audio_url").?.string);
+    try std.testing.expect(body.object.get("language") == null);
+    try std.testing.expect(body.object.get("toggle_diarization") == null);
+    try std.testing.expect(body.object.get("toggle_summarization") == null);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with language options" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "enhanced",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .language = "en",
+        .language_behaviour = "manual",
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("en", body.object.get("language").?.string);
+    try std.testing.expectEqualStrings("manual", body.object.get("language_behaviour").?.string);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with diarization" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "enhanced",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .toggle_diarization = true,
+        .diarization_max_speakers = 5,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("toggle_diarization").?.bool);
+    try std.testing.expectEqual(@as(i64, 5), body.object.get("diarization_max_speakers").?.integer);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with translation" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "enhanced",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .toggle_direct_translate = true,
+        .target_translation_language = "fr",
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("toggle_direct_translate").?.bool);
+    try std.testing.expectEqualStrings("fr", body.object.get("target_translation_language").?.string);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with processing toggles" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "enhanced",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .toggle_text_emotion_recognition = true,
+        .toggle_summarization = true,
+        .toggle_chapterization = true,
+        .toggle_noise_reduction = true,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("toggle_text_emotion_recognition").?.bool);
+    try std.testing.expectEqual(true, body.object.get("toggle_summarization").?.bool);
+    try std.testing.expectEqual(true, body.object.get("toggle_chapterization").?.bool);
+    try std.testing.expectEqual(true, body.object.get("toggle_noise_reduction").?.bool);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with output_format" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "fast",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .output_format = "srt",
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("srt", body.object.get("output_format").?.string);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with custom_vocabulary" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "enhanced",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const vocab = &[_][]const u8{ "Zig", "allocator", "comptime" };
+    const options = TranscriptionOptions{
+        .custom_vocabulary = vocab,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer {
+        body.object.get("custom_vocabulary").?.array.deinit();
+        body.object.deinit();
+    }
+
+    const arr = body.object.get("custom_vocabulary").?.array;
+    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try std.testing.expectEqualStrings("Zig", arr.items[0].string);
+    try std.testing.expectEqualStrings("allocator", arr.items[1].string);
+    try std.testing.expectEqualStrings("comptime", arr.items[2].string);
+}
+
+test "GladiaTranscriptionModel buildRequestBody with webhook_url" {
+    const allocator = std.testing.allocator;
+    const settings = GladiaProviderSettings{};
+    const model = GladiaTranscriptionModel.init(
+        allocator,
+        "enhanced",
+        "https://api.gladia.io",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .webhook_url = "https://example.com/webhook",
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("https://example.com/webhook", body.object.get("webhook_url").?.string);
+}
+
+test "GladiaTranscriptionModel model with custom base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createGladiaWithSettings(allocator, .{
+        .base_url = "https://custom.gladia.io",
+    });
+    defer prov.deinit();
+
+    const model = prov.transcriptionModel("enhanced");
+    try std.testing.expectEqualStrings("https://custom.gladia.io", model.base_url);
 }

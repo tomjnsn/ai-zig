@@ -39,3 +39,23 @@ test "supportsReasoning" {
     try std.testing.expect(supportsReasoning("deepseek-reasoner"));
     try std.testing.expect(!supportsReasoning("deepseek-chat"));
 }
+
+test "ChatModels constants" {
+    try std.testing.expectEqualStrings("deepseek-chat", ChatModels.deepseek_chat);
+    try std.testing.expectEqualStrings("deepseek-reasoner", ChatModels.deepseek_reasoner);
+}
+
+test "ThinkingType toString" {
+    try std.testing.expectEqualStrings("enabled", ThinkingType.enabled.toString());
+    try std.testing.expectEqualStrings("disabled", ThinkingType.disabled.toString());
+}
+
+test "DeepSeekChatOptions defaults" {
+    const opts = DeepSeekChatOptions{};
+    try std.testing.expect(opts.thinking == null);
+}
+
+test "ThinkingConfig default type" {
+    const config = ThinkingConfig{};
+    try std.testing.expect(config.type == .enabled);
+}

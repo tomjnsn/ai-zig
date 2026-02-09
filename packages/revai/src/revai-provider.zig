@@ -1,6 +1,6 @@
 const std = @import("std");
 const provider_utils = @import("provider-utils");
-const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
+const provider_v3 = @import("provider").provider;
 
 pub const RevAIProviderSettings = struct {
     base_url: ?[]const u8 = null,
@@ -282,4 +282,357 @@ test "RevAIProvider basic" {
     var prov = createRevAIWithSettings(allocator, .{});
     defer prov.deinit();
     try std.testing.expectEqualStrings("revai", prov.getProvider());
+}
+
+test "RevAIProvider default base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createRevAI(allocator);
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://api.rev.ai", prov.base_url);
+}
+
+test "RevAIProvider custom base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createRevAIWithSettings(allocator, .{
+        .base_url = "https://custom.rev.ai",
+    });
+    defer prov.deinit();
+    try std.testing.expectEqualStrings("https://custom.rev.ai", prov.base_url);
+}
+
+test "RevAIProvider specification_version" {
+    try std.testing.expectEqualStrings("v3", RevAIProvider.specification_version);
+}
+
+test "RevAIProvider transcriptionModel creates model with correct properties" {
+    const allocator = std.testing.allocator;
+    var prov = createRevAI(allocator);
+    defer prov.deinit();
+
+    const model = prov.transcriptionModel("machine");
+    try std.testing.expectEqualStrings("machine", model.getModelId());
+    try std.testing.expectEqualStrings("revai.transcription", model.getProvider());
+    try std.testing.expectEqualStrings("https://api.rev.ai", model.base_url);
+}
+
+test "RevAIProvider transcription alias" {
+    const allocator = std.testing.allocator;
+    var prov = createRevAI(allocator);
+    defer prov.deinit();
+
+    const model = prov.transcription("human");
+    try std.testing.expectEqualStrings("human", model.getModelId());
+    try std.testing.expectEqualStrings("revai.transcription", model.getProvider());
+}
+
+test "TranscriptionModels constants" {
+    try std.testing.expectEqualStrings("machine", TranscriptionModels.machine);
+    try std.testing.expectEqualStrings("machine_v2", TranscriptionModels.machine_v2);
+    try std.testing.expectEqualStrings("human", TranscriptionModels.human);
+}
+
+test "TranscriptionOptions default values" {
+    const options = TranscriptionOptions{};
+    try std.testing.expect(options.language == null);
+    try std.testing.expect(options.skip_diarization == null);
+    try std.testing.expect(options.skip_punctuation == null);
+    try std.testing.expect(options.remove_disfluencies == null);
+    try std.testing.expect(options.filter_profanity == null);
+    try std.testing.expect(options.speaker_channels_count == null);
+    try std.testing.expect(options.custom_vocabularies == null);
+    try std.testing.expect(options.delete_after_seconds == null);
+    try std.testing.expect(options.metadata == null);
+    try std.testing.expect(options.callback_url == null);
+    try std.testing.expect(options.verbatim == null);
+    try std.testing.expect(options.rush == null);
+    try std.testing.expect(options.segments == null);
+    try std.testing.expect(options.emotion == null);
+    try std.testing.expect(options.summarization == null);
+    try std.testing.expect(options.translation == null);
+}
+
+test "SummarizationConfig default values" {
+    const config = SummarizationConfig{};
+    try std.testing.expect(config.@"type" == null);
+    try std.testing.expect(config.model == null);
+    try std.testing.expect(config.prompt == null);
+}
+
+test "TranslationConfig default values" {
+    const config = TranslationConfig{};
+    try std.testing.expect(config.target_languages == null);
+}
+
+test "RevAITranscriptionModel buildRequestBody with media_url only" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{};
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("https://example.com/audio.mp3", body.object.get("media_url").?.string);
+    try std.testing.expect(body.object.get("language") == null);
+    try std.testing.expect(body.object.get("skip_diarization") == null);
+    try std.testing.expect(body.object.get("summarization") == null);
+}
+
+test "RevAITranscriptionModel buildRequestBody with language" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .language = "en",
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("en", body.object.get("language").?.string);
+}
+
+test "RevAITranscriptionModel buildRequestBody with processing options" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .skip_diarization = false,
+        .skip_punctuation = false,
+        .remove_disfluencies = true,
+        .filter_profanity = true,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(false, body.object.get("skip_diarization").?.bool);
+    try std.testing.expectEqual(false, body.object.get("skip_punctuation").?.bool);
+    try std.testing.expectEqual(true, body.object.get("remove_disfluencies").?.bool);
+    try std.testing.expectEqual(true, body.object.get("filter_profanity").?.bool);
+}
+
+test "RevAITranscriptionModel buildRequestBody with speaker_channels_count" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .speaker_channels_count = 2,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(@as(i64, 2), body.object.get("speaker_channels_count").?.integer);
+}
+
+test "RevAITranscriptionModel buildRequestBody with custom_vocabularies" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const vocabs = &[_]CustomVocabulary{
+        .{ .phrases = &[_][]const u8{ "Zig", "comptime" } },
+        .{ .phrases = &[_][]const u8{"allocator"} },
+    };
+    const options = TranscriptionOptions{
+        .custom_vocabularies = vocabs,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer {
+        // Clean up nested arrays and objects
+        var cv_arr = body.object.get("custom_vocabularies").?.array;
+        for (cv_arr.items) |*item| {
+            item.object.get("phrases").?.array.deinit();
+            item.object.deinit();
+        }
+        cv_arr.deinit();
+        body.object.deinit();
+    }
+
+    const cv_arr = body.object.get("custom_vocabularies").?.array;
+    try std.testing.expectEqual(@as(usize, 2), cv_arr.items.len);
+
+    // First vocabulary entry
+    const first_phrases = cv_arr.items[0].object.get("phrases").?.array;
+    try std.testing.expectEqual(@as(usize, 2), first_phrases.items.len);
+    try std.testing.expectEqualStrings("Zig", first_phrases.items[0].string);
+    try std.testing.expectEqualStrings("comptime", first_phrases.items[1].string);
+
+    // Second vocabulary entry
+    const second_phrases = cv_arr.items[1].object.get("phrases").?.array;
+    try std.testing.expectEqual(@as(usize, 1), second_phrases.items.len);
+    try std.testing.expectEqualStrings("allocator", second_phrases.items[0].string);
+}
+
+test "RevAITranscriptionModel buildRequestBody with metadata and callback" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .metadata = "job-123",
+        .callback_url = "https://example.com/callback",
+        .delete_after_seconds = 3600,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqualStrings("job-123", body.object.get("metadata").?.string);
+    try std.testing.expectEqualStrings("https://example.com/callback", body.object.get("callback_url").?.string);
+    try std.testing.expectEqual(@as(i64, 3600), body.object.get("delete_after_seconds").?.integer);
+}
+
+test "RevAITranscriptionModel buildRequestBody with human transcription options" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "human",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .verbatim = true,
+        .rush = true,
+        .segments = true,
+        .emotion = true,
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer body.object.deinit();
+
+    try std.testing.expectEqual(true, body.object.get("verbatim").?.bool);
+    try std.testing.expectEqual(true, body.object.get("rush").?.bool);
+    try std.testing.expectEqual(true, body.object.get("segments").?.bool);
+    try std.testing.expectEqual(true, body.object.get("emotion").?.bool);
+}
+
+test "RevAITranscriptionModel buildRequestBody with summarization" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .summarization = .{
+            .@"type" = "bullets",
+            .model = "standard",
+            .prompt = "Summarize the key points",
+        },
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer {
+        body.object.getPtr("summarization").?.object.deinit();
+        body.object.deinit();
+    }
+
+    const sum_obj = body.object.get("summarization").?.object;
+    try std.testing.expectEqualStrings("bullets", sum_obj.get("type").?.string);
+    try std.testing.expectEqualStrings("standard", sum_obj.get("model").?.string);
+    try std.testing.expectEqualStrings("Summarize the key points", sum_obj.get("prompt").?.string);
+}
+
+test "RevAITranscriptionModel buildRequestBody with translation" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const target_langs = &[_][]const u8{ "es", "fr", "de" };
+    const options = TranscriptionOptions{
+        .translation = .{
+            .target_languages = target_langs,
+        },
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer {
+        body.object.getPtr("translation").?.object.getPtr("target_languages").?.array.deinit();
+        body.object.getPtr("translation").?.object.deinit();
+        body.object.deinit();
+    }
+
+    const tr_obj = body.object.get("translation").?.object;
+    const lang_arr = tr_obj.get("target_languages").?.array;
+    try std.testing.expectEqual(@as(usize, 3), lang_arr.items.len);
+    try std.testing.expectEqualStrings("es", lang_arr.items[0].string);
+    try std.testing.expectEqualStrings("fr", lang_arr.items[1].string);
+    try std.testing.expectEqualStrings("de", lang_arr.items[2].string);
+}
+
+test "RevAITranscriptionModel buildRequestBody with partial summarization config" {
+    const allocator = std.testing.allocator;
+    const settings = RevAIProviderSettings{};
+    const model = RevAITranscriptionModel.init(
+        allocator,
+        "machine",
+        "https://api.rev.ai",
+        settings,
+    );
+
+    const options = TranscriptionOptions{
+        .summarization = .{
+            .@"type" = "paragraph",
+        },
+    };
+    var body = try model.buildRequestBody("https://example.com/audio.mp3", options);
+    defer {
+        body.object.getPtr("summarization").?.object.deinit();
+        body.object.deinit();
+    }
+
+    const sum_obj = body.object.get("summarization").?.object;
+    try std.testing.expectEqualStrings("paragraph", sum_obj.get("type").?.string);
+    try std.testing.expect(sum_obj.get("model") == null);
+    try std.testing.expect(sum_obj.get("prompt") == null);
+}
+
+test "RevAITranscriptionModel model with custom base_url" {
+    const allocator = std.testing.allocator;
+    var prov = createRevAIWithSettings(allocator, .{
+        .base_url = "https://custom.rev.ai",
+    });
+    defer prov.deinit();
+
+    const model = prov.transcriptionModel("machine_v2");
+    try std.testing.expectEqualStrings("https://custom.rev.ai", model.base_url);
+    try std.testing.expectEqualStrings("machine_v2", model.getModelId());
 }

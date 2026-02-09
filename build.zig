@@ -329,7 +329,15 @@ pub fn build(b: *std.Build) void {
         .{ .path = "packages/groq/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod }, .{ .name = "openai-compatible", .mod = openai_compatible_mod } } },
         .{ .path = "packages/elevenlabs/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
         .{ .path = "packages/deepgram/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/hume/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
         .{ .path = "packages/replicate/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/fal/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/luma/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/lmnt/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/assemblyai/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/gladia/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/revai/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
+        .{ .path = "packages/black-forest-labs/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
         .{ .path = "packages/azure/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod }, .{ .name = "openai", .mod = openai_mod } } },
         // Integration tests
         .{ .path = "tests/integration/provider_test.zig", .imports = &.{
