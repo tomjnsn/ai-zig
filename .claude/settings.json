@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: implement API key redaction utility\n\nImplements redactApiKey\\(\\) and containsApiKey\\(\\) functions that detect\nand redact sensitive API key patterns \\(sk-, sk-proj-, anthropic-sk-ant-\\)\nfrom text to prevent credential leakage in error messages and logs.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}
