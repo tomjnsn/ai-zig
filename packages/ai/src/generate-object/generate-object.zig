@@ -49,11 +49,14 @@ pub const GenerateObjectResult = struct {
     /// Warnings from the model
     warnings: ?[]const []const u8 = null,
 
+    /// Internal: holds the parsed JSON for cleanup
+    _parsed: ?std.json.Parsed(std.json.Value) = null,
+
     /// Clean up resources
-    pub fn deinit(self: *GenerateObjectResult, allocator: std.mem.Allocator) void {
-        _ = self;
-        _ = allocator;
-        // Arena allocator handles cleanup
+    pub fn deinit(self: *GenerateObjectResult) void {
+        if (self._parsed) |p| {
+            p.deinit();
+        }
     }
 };
 
@@ -134,17 +137,90 @@ pub fn generateObject(
     const schema_json = std.json.Stringify.valueAlloc(arena_allocator, options.schema.json_schema, .{}) catch return GenerateObjectError.OutOfMemory;
     writer.writeAll(schema_json) catch return GenerateObjectError.OutOfMemory;
 
-    // TODO: Call model with prepared prompt
-    // For now, return a placeholder result
+    // Build prompt messages for the model
+    var prompt_msgs = std.array_list.Managed(provider_types.LanguageModelV3Message).init(arena_allocator);
+
+    // Add system message with schema instructions
+    prompt_msgs.append(provider_types.language_model.systemMessage(system_parts.items)) catch return GenerateObjectError.OutOfMemory;
+
+    // Add user message
+    if (options.prompt) |prompt| {
+        const msg = provider_types.language_model.userTextMessage(arena_allocator, prompt) catch return GenerateObjectError.OutOfMemory;
+        prompt_msgs.append(msg) catch return GenerateObjectError.OutOfMemory;
+    }
+
+    // Build call options
+    const call_options = provider_types.LanguageModelV3CallOptions{
+        .prompt = prompt_msgs.items,
+        .max_output_tokens = options.settings.max_output_tokens,
+        .temperature = if (options.settings.temperature) |t| @as(f32, @floatCast(t)) else null,
+        .top_p = if (options.settings.top_p) |t| @as(f32, @floatCast(t)) else null,
+        .seed = if (options.settings.seed) |s| @as(i64, @intCast(s)) else null,
+    };
+
+    // Call model.doGenerate
+    const CallbackCtx = struct { result: ?LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+    const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
+
+    options.model.doGenerate(
+        call_options,
+        allocator,
+        struct {
+            fn onResult(ptr: ?*anyopaque, result: LanguageModelV3.GenerateResult) void {
+                const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
+                ctx.result = result;
+            }
+        }.onResult,
+        ctx_ptr,
+    );
+
+    const gen_success = switch (cb_ctx.result orelse return GenerateObjectError.ModelError) {
+        .success => |s| s,
+        .failure => return GenerateObjectError.ModelError,
+    };
+
+    // Extract text from content
+    var raw_text: []const u8 = "";
+    for (gen_success.content) |content| {
+        switch (content) {
+            .text => |t| {
+                raw_text = t.text;
+                break;
+            },
+            else => {},
+        }
+    }
+
+    // Parse JSON from model output
+    const parsed = parseJsonOutput(allocator, raw_text) catch return GenerateObjectError.ParseError;
+
+    // Map usage
+    const usage = LanguageModelUsage{
+        .input_tokens = gen_success.usage.input_tokens.total,
+        .output_tokens = gen_success.usage.output_tokens.total,
+    };
 
     return GenerateObjectResult{
-        .object = std.json.Value{ .object = std.json.ObjectMap.init(allocator) },
-        .raw_text = "{}",
-        .usage = .{},
-        .response = .{
-            .id = "placeholder",
-            .model_id = "placeholder",
-            .timestamp = std.time.timestamp(),
+        .object = parsed.value,
+        ._parsed = parsed,
+        .raw_text = raw_text,
+        .usage = usage,
+        .response = blk: {
+            const model_id = options.model.getModelId();
+            if (gen_success.response) |r| {
+                break :blk ResponseMetadata{
+                    .id = r.metadata.id orelse "",
+                    .model_id = r.metadata.model_id orelse model_id,
+                    .timestamp = r.metadata.timestamp orelse 0,
+                };
+            } else {
+                break :blk ResponseMetadata{
+                    .id = "",
+                    .model_id = model_id,
+                    .timestamp = 0,
+                };
+            }
         },
         .warnings = null,
     };
@@ -281,16 +357,16 @@ test "generateObject returns valid JSON object from mock model" {
     var mock = MockModel{};
     var model = provider_types.asLanguageModel(MockModel, &mock);
 
-    const result = try generateObject(std.testing.allocator, .{
+    var result = try generateObject(std.testing.allocator, .{
         .model = &model,
         .prompt = "Generate a person",
         .schema = .{
             .json_schema = std.json.Value{ .object = std.json.ObjectMap.init(std.testing.allocator) },
         },
     });
+    defer result.deinit();
 
-    // Should have parsed JSON object (currently returns empty object - test should FAIL
-    // because raw_text should come from model, not be hardcoded "{}"))
+    // Should have parsed JSON object from model
     try std.testing.expectEqualStrings("{\"name\":\"Alice\",\"age\":30}", result.raw_text);
     try std.testing.expect(result.object == .object);
 }
