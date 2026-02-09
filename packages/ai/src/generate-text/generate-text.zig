@@ -355,6 +355,67 @@ test "GenerateTextOptions default values" {
     try std.testing.expect(options.max_retries == 2);
 }
 
+test "generateText returns text from mock provider" {
+    const MockModel = struct {
+        const Self = @This();
+
+        const mock_content = [_]provider_types.LanguageModelV3Content{
+            .{ .text = .{ .text = "Hello from mock model!" } },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-model";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .content = &mock_content,
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.initWithTotals(10, 20),
+            } });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockModel{};
+    var model = provider_types.asLanguageModel(MockModel, &mock);
+
+    const result = try generateText(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "Say hello",
+    });
+
+    // This should return the text from the mock model's doGenerate response
+    try std.testing.expectEqualStrings("Hello from mock model!", result.text);
+}
+
 test "LanguageModelUsage add" {
     const usage1 = LanguageModelUsage{
         .input_tokens = 100,
