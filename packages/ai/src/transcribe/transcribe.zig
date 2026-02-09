@@ -288,3 +288,61 @@ test "AudioSource union" {
         else => try std.testing.expect(false),
     }
 }
+
+test "transcribe returns text from mock provider" {
+    const MockTranscriptionModel = struct {
+        const Self = @This();
+
+        const mock_segments = [_]provider_types.TranscriptionSegment{
+            .{ .text = "Hello world", .start_second = 0.0, .end_second = 1.5 },
+            .{ .text = "How are you", .start_second = 1.5, .end_second = 3.0 },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-transcribe";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.TranscriptionModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, TranscriptionModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .text = "Hello world How are you",
+                .segments = &mock_segments,
+                .language = "en",
+                .duration_in_seconds = 3.0,
+                .response = .{
+                    .timestamp = 1234567890,
+                    .model_id = "mock-transcribe",
+                },
+            } });
+        }
+    };
+
+    var mock = MockTranscriptionModel{};
+    var model = provider_types.asTranscriptionModel(MockTranscriptionModel, &mock);
+
+    const result = try transcribe(std.testing.allocator, .{
+        .model = &model,
+        .audio = .{ .data = .{ .data = "fake_audio", .mime_type = "audio/mp3" } },
+    });
+
+    // Should have transcription text (currently returns empty - this test should FAIL)
+    try std.testing.expectEqualStrings("Hello world How are you", result.text);
+
+    // Should have language
+    try std.testing.expectEqualStrings("en", result.language.?);
+
+    // Should have duration
+    try std.testing.expectApproxEqAbs(@as(f64, 3.0), result.duration_seconds.?, 0.001);
+
+    // Should have model ID from provider
+    try std.testing.expectEqualStrings("mock-transcribe", result.response.model_id);
+}
