@@ -210,3 +210,61 @@ test "getPresetDimensions" {
     try std.testing.expectEqual(@as(u32, 1792), wide.width);
     try std.testing.expectEqual(@as(u32, 1024), wide.height);
 }
+
+test "generateImage returns image from mock provider" {
+    const MockImageModel = struct {
+        const Self = @This();
+
+        const mock_base64 = [_][]const u8{"aW1hZ2VfZGF0YQ=="}; // "image_data" in base64
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-image";
+        }
+
+        pub fn getMaxImagesPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 4);
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.ImageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, ImageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .images = .{ .base64 = &mock_base64 },
+                .response = .{
+                    .timestamp = 1234567890,
+                    .model_id = "mock-image",
+                },
+            } });
+        }
+    };
+
+    var mock = MockImageModel{};
+    var model = provider_types.asImageModel(MockImageModel, &mock);
+
+    const result = try generateImage(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "A beautiful sunset",
+    });
+
+    // Should have 1 image (currently returns empty - this test should FAIL)
+    try std.testing.expectEqual(@as(usize, 1), result.images.len);
+
+    // Should have base64 data
+    try std.testing.expect(result.images[0].base64 != null);
+    try std.testing.expectEqualStrings("aW1hZ2VfZGF0YQ==", result.images[0].base64.?);
+
+    // Should have model ID from provider
+    try std.testing.expectEqualStrings("mock-image", result.response.model_id);
+}
