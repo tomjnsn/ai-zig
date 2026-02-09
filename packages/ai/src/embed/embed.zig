@@ -521,3 +521,104 @@ test "embedMany batches requests per provider limits" {
     // Should have model ID from provider
     try std.testing.expectEqualStrings("mock-batch", result.response.model_id);
 }
+
+test "embed returns error on empty value" {
+    const MockEmbed = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-embed";
+        }
+
+        pub fn getMaxEmbeddingsPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 100);
+        }
+
+        pub fn getSupportsParallelCalls(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, bool) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, true);
+        }
+
+        pub fn doEmbed(
+            _: *const Self,
+            _: provider_types.EmbeddingModelCallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, provider_types.EmbeddingModelV3.EmbedResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+    };
+
+    var mock = MockEmbed{};
+    var model = provider_types.asEmbeddingModel(MockEmbed, &mock);
+
+    // Empty value should return InvalidInput
+    const result = embed(std.testing.allocator, .{
+        .model = &model,
+        .value = "",
+    });
+
+    try std.testing.expectError(EmbedError.InvalidInput, result);
+}
+
+test "embed returns error on model failure" {
+    const MockFailEmbed = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-fail";
+        }
+
+        pub fn getMaxEmbeddingsPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 100);
+        }
+
+        pub fn getSupportsParallelCalls(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, bool) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, true);
+        }
+
+        pub fn doEmbed(
+            _: *const Self,
+            _: provider_types.EmbeddingModelCallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, provider_types.EmbeddingModelV3.EmbedResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+    };
+
+    var mock = MockFailEmbed{};
+    var model = provider_types.asEmbeddingModel(MockFailEmbed, &mock);
+
+    const result = embed(std.testing.allocator, .{
+        .model = &model,
+        .value = "test input",
+    });
+
+    try std.testing.expectError(EmbedError.ModelError, result);
+}

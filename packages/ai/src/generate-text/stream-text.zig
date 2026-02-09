@@ -565,3 +565,145 @@ test "StreamTextResult process text delta" {
 
     try std.testing.expectEqualStrings("Hello World", result.getText());
 }
+
+test "streamText calls error callback on model failure" {
+    const MockFailStreamModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-fail-stream";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            // Simulate error during streaming
+            callbacks.on_error(callbacks.ctx, error.HttpRequestFailed);
+        }
+    };
+
+    const TestCtx = struct {
+        error_received: bool = false,
+        complete_received: bool = false,
+
+        fn onPart(_: StreamPart, _: ?*anyopaque) void {}
+        fn onError(_: anyerror, ctx: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx.?));
+            self.error_received = true;
+        }
+        fn onComplete(ctx: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx.?));
+            self.complete_received = true;
+        }
+    };
+
+    var test_ctx = TestCtx{};
+
+    var mock = MockFailStreamModel{};
+    var model = provider_types.asLanguageModel(MockFailStreamModel, &mock);
+
+    const result = streamText(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "This should fail during streaming",
+        .callbacks = .{
+            .on_part = TestCtx.onPart,
+            .on_error = TestCtx.onError,
+            .on_complete = TestCtx.onComplete,
+            .ctx = @ptrCast(&test_ctx),
+        },
+    });
+    defer result.deinit();
+
+    try std.testing.expect(test_ctx.error_received);
+}
+
+test "streamText with empty prompt returns error" {
+    const MockModel3 = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockModel3{};
+    var model = provider_types.asLanguageModel(MockModel3, &mock);
+
+    const callbacks = StreamCallbacks{
+        .on_part = struct {
+            fn f(_: StreamPart, _: ?*anyopaque) void {}
+        }.f,
+        .on_error = struct {
+            fn f(_: anyerror, _: ?*anyopaque) void {}
+        }.f,
+        .on_complete = struct {
+            fn f(_: ?*anyopaque) void {}
+        }.f,
+    };
+
+    // Neither prompt nor messages provided
+    const result = streamText(std.testing.allocator, .{
+        .model = &model,
+        .callbacks = callbacks,
+    });
+
+    try std.testing.expectError(StreamTextError.InvalidPrompt, result);
+}

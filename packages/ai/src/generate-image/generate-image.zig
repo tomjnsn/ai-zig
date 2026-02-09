@@ -328,3 +328,71 @@ test "GeneratedImage.getData returns error for no data" {
     const result = image.getData(std.testing.allocator);
     try std.testing.expectError(error.NoImageData, result);
 }
+
+test "generateImage returns error on empty prompt" {
+    const MockImg = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-img";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.ImageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, ImageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+    };
+
+    var mock = MockImg{};
+    var model = provider_types.asImageModel(MockImg, &mock);
+
+    const result = generateImage(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "",
+    });
+
+    try std.testing.expectError(GenerateImageError.InvalidPrompt, result);
+}
+
+test "generateImage returns error on model failure" {
+    const MockFailImg = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-fail-img";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.ImageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, ImageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+    };
+
+    var mock = MockFailImg{};
+    var model = provider_types.asImageModel(MockFailImg, &mock);
+
+    const result = generateImage(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "Generate a cat image",
+    });
+
+    try std.testing.expectError(GenerateImageError.ModelError, result);
+}
