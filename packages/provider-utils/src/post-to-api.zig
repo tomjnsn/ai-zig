@@ -106,6 +106,7 @@ pub fn postJsonToApi(
         body_values: json_value.JsonValue,
         body_string: []const u8,
         allocator: std.mem.Allocator,
+        max_response_size: ?usize,
     };
 
     const ctx = allocator.create(CallbackContext) catch {
@@ -124,6 +125,7 @@ pub fn postJsonToApi(
         .body_values = options.body,
         .body_string = body,
         .allocator = allocator,
+        .max_response_size = options.max_response_size,
     };
 
     // Make the request
@@ -134,6 +136,7 @@ pub fn postJsonToApi(
             .headers = headers_list.items,
             .body = body,
             .timeout_ms = options.timeout_ms,
+            .max_response_size = options.max_response_size,
         },
         allocator,
         struct {
@@ -143,6 +146,21 @@ pub fn postJsonToApi(
                     c.allocator.free(c.body_string);
                     c.allocator.destroy(c);
                 }
+
+                // Check response size limit
+                if (c.max_response_size) |max_size| {
+                    if (response.body.len > max_size) {
+                        c.original_callbacks.on_error(c.original_callbacks.ctx, .{
+                            .info = errors.ApiCallError.init(.{
+                                .message = "Response body exceeds maximum allowed size",
+                                .url = c.url,
+                                .status_code = response.status_code,
+                            }),
+                        });
+                        return;
+                    }
+                }
+
                 if (response.isSuccess()) {
                     c.original_callbacks.on_success(c.original_callbacks.ctx, .{
                         .body = response.body,
@@ -213,6 +231,7 @@ pub fn postToApi(
         original_callbacks: ApiCallbacks,
         url: []const u8,
         allocator: std.mem.Allocator,
+        max_response_size: ?usize,
     };
 
     const ctx = allocator.create(CallbackContext) catch {
@@ -228,6 +247,7 @@ pub fn postToApi(
         .original_callbacks = callbacks,
         .url = options.url,
         .allocator = allocator,
+        .max_response_size = options.max_response_size,
     };
 
     // Make the request
@@ -238,12 +258,28 @@ pub fn postToApi(
             .headers = headers_list.items,
             .body = options.body,
             .timeout_ms = options.timeout_ms,
+            .max_response_size = options.max_response_size,
         },
         allocator,
         struct {
             fn onResponse(context: ?*anyopaque, response: http_client.HttpClient.Response) void {
                 const c: *CallbackContext = @ptrCast(@alignCast(context));
                 defer c.allocator.destroy(c);
+
+                // Check response size limit
+                if (c.max_response_size) |max_size| {
+                    if (response.body.len > max_size) {
+                        c.original_callbacks.on_error(c.original_callbacks.ctx, .{
+                            .info = errors.ApiCallError.init(.{
+                                .message = "Response body exceeds maximum allowed size",
+                                .url = c.url,
+                                .status_code = response.status_code,
+                            }),
+                        });
+                        return;
+                    }
+                }
+
                 if (response.isSuccess()) {
                     c.original_callbacks.on_success(c.original_callbacks.ctx, .{
                         .body = response.body,
