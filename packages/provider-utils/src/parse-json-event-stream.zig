@@ -667,6 +667,27 @@ test "EventSourceParser empty data field" {
     try std.testing.expectEqualStrings("", events.items[0]);
 }
 
+test "rejects event stream exceeding buffer limit" {
+    const allocator = std.testing.allocator;
+
+    var parser = EventSourceParser.initWithMaxBuffer(allocator, 64);
+    defer parser.deinit();
+
+    var event_count: usize = 0;
+
+    // Feed data that exceeds the buffer limit (no newline so it accumulates)
+    const chunk = "data: " ++ "x" ** 70;
+    const result = parser.feed(chunk, struct {
+        fn handler(ctx: ?*anyopaque, _: EventSourceParser.Event) void {
+            const count: *usize = @ptrCast(@alignCast(ctx));
+            count.* += 1;
+        }
+    }.handler, &event_count);
+
+    try std.testing.expectError(error.BufferLimitExceeded, result);
+    try std.testing.expectEqual(@as(usize, 0), event_count);
+}
+
 test "SimpleJsonEventStreamParser basic" {
     const allocator = std.testing.allocator;
 
