@@ -622,3 +622,154 @@ test "embed returns error on model failure" {
 
     try std.testing.expectError(EmbedError.ModelError, result);
 }
+
+test "embed sequential requests don't leak memory" {
+    const MockStressEmbed = struct {
+        const Self = @This();
+
+        const mock_embedding = [_]f32{ 0.1, 0.2, 0.3, 0.4 };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-stress-embed";
+        }
+
+        pub fn getMaxEmbeddingsPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 100);
+        }
+
+        pub fn getSupportsParallelCalls(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, bool) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, true);
+        }
+
+        pub fn doEmbed(
+            _: *const Self,
+            _: provider_types.EmbeddingModelCallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, provider_types.EmbeddingModelV3.EmbedResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            const embeddings = [_][]const f32{&mock_embedding};
+            callback(ctx, .{ .success = .{
+                .embeddings = &embeddings,
+                .usage = .{ .tokens = 5 },
+            } });
+        }
+    };
+
+    var mock = MockStressEmbed{};
+    var model = provider_types.asEmbeddingModel(MockStressEmbed, &mock);
+
+    // Run 50 sequential embed calls - testing allocator detects leaks
+    var i: u32 = 0;
+    while (i < 50) : (i += 1) {
+        const result = try embed(std.testing.allocator, .{
+            .model = &model,
+            .value = "test embedding text",
+        });
+        defer std.testing.allocator.free(result.embedding.values);
+        try std.testing.expectEqual(@as(usize, 4), result.embedding.values.len);
+    }
+}
+
+test "embedMany large batch with batching doesn't leak memory" {
+    const MockLargeBatchEmbed = struct {
+        const Self = @This();
+        call_count: u32 = 0,
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-large-batch";
+        }
+
+        pub fn getMaxEmbeddingsPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 10); // Max 10 per call
+        }
+
+        pub fn getSupportsParallelCalls(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, bool) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, false);
+        }
+
+        pub fn doEmbed(
+            self: *Self,
+            options: provider_types.EmbeddingModelCallOptions,
+            alloc: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, EmbeddingModelV3.EmbedResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            self.call_count += 1;
+            const embeddings = alloc.alloc(provider_types.EmbeddingModelV3Embedding, options.values.len) catch {
+                callback(ctx, .{ .failure = error.OutOfMemory });
+                return;
+            };
+            for (0..options.values.len) |i| {
+                const vals = alloc.alloc(f32, 3) catch {
+                    callback(ctx, .{ .failure = error.OutOfMemory });
+                    return;
+                };
+                vals[0] = 0.1;
+                vals[1] = 0.2;
+                vals[2] = 0.3;
+                embeddings[i] = vals;
+            }
+            callback(ctx, .{ .success = .{
+                .embeddings = embeddings,
+                .usage = .{ .tokens = @as(u64, options.values.len) * 3 },
+            } });
+        }
+    };
+
+    var mock = MockLargeBatchEmbed{};
+    var model = provider_types.asEmbeddingModel(MockLargeBatchEmbed, &mock);
+
+    // 50 texts with max 10 per call = 5 batches
+    var texts: [50][]const u8 = undefined;
+    for (&texts, 0..) |*t, i| {
+        _ = i;
+        t.* = "embedding text";
+    }
+
+    const result = try embedMany(std.testing.allocator, .{
+        .model = &model,
+        .values = &texts,
+    });
+    defer {
+        for (result.embeddings) |emb| {
+            std.testing.allocator.free(emb.values);
+        }
+        std.testing.allocator.free(result.embeddings);
+    }
+
+    // Should have 50 embeddings
+    try std.testing.expectEqual(@as(usize, 50), result.embeddings.len);
+
+    // Should have required 5 batches (50 / 10)
+    try std.testing.expectEqual(@as(u32, 5), mock.call_count);
+
+    // Each embedding should have 3 values
+    for (result.embeddings) |emb| {
+        try std.testing.expectEqual(@as(usize, 3), emb.values.len);
+    }
+}

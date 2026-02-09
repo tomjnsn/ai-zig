@@ -695,3 +695,66 @@ test "generateText returns error on empty prompt" {
 
     try std.testing.expectError(GenerateTextError.InvalidPrompt, result);
 }
+
+test "generateText sequential requests don't leak memory" {
+    const MockStressModel = struct {
+        const Self = @This();
+
+        const mock_content = [_]provider_types.LanguageModelV3Content{
+            .{ .text = .{ .text = "Response" } },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-stress";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .content = &mock_content,
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.initWithTotals(5, 10),
+            } });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockStressModel{};
+    var model = provider_types.asLanguageModel(MockStressModel, &mock);
+
+    // Run 50 sequential requests - testing allocator detects leaks
+    var i: u32 = 0;
+    while (i < 50) : (i += 1) {
+        const result = try generateText(std.testing.allocator, .{
+            .model = &model,
+            .prompt = "Hello",
+        });
+        try std.testing.expectEqualStrings("Response", result.text);
+    }
+}

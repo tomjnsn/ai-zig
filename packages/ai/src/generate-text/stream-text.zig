@@ -710,3 +710,100 @@ test "streamText with empty prompt returns error" {
 
     try std.testing.expectError(StreamTextError.InvalidPrompt, result);
 }
+
+test "streamText many chunks don't leak memory" {
+    const MockManyChunksModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-chunks";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            // Emit 100 text delta chunks
+            callbacks.on_part(callbacks.ctx, .{ .text_start = .{ .id = "text-0" } });
+            var i: u32 = 0;
+            while (i < 100) : (i += 1) {
+                callbacks.on_part(callbacks.ctx, .{ .text_delta = .{ .id = "text-0", .delta = "chunk " } });
+            }
+            callbacks.on_part(callbacks.ctx, .{ .text_end = .{ .id = "text-0" } });
+            callbacks.on_part(callbacks.ctx, .{
+                .finish = .{
+                    .finish_reason = .stop,
+                    .usage = provider_types.LanguageModelV3Usage.initWithTotals(10, 100),
+                },
+            });
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    const TestCtx = struct {
+        chunk_count: u32 = 0,
+        completed: bool = false,
+
+        fn onPart(_: StreamPart, context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.chunk_count += 1;
+        }
+
+        fn onError(_: anyerror, _: ?*anyopaque) void {}
+
+        fn onComplete(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.completed = true;
+        }
+    };
+
+    var test_ctx = TestCtx{};
+
+    var mock = MockManyChunksModel{};
+    var model = provider_types.asLanguageModel(MockManyChunksModel, &mock);
+
+    const result = try streamText(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "Generate a long response",
+        .callbacks = .{
+            .on_part = TestCtx.onPart,
+            .on_error = TestCtx.onError,
+            .on_complete = TestCtx.onComplete,
+            .context = @ptrCast(&test_ctx),
+        },
+    });
+    defer {
+        result.deinit();
+        std.testing.allocator.destroy(result);
+    }
+
+    try std.testing.expect(test_ctx.completed);
+    // translatePart skips text_start and text_end (returns null)
+    // Only 100 text_deltas + 1 finish = 101 parts reach the callback
+    try std.testing.expectEqual(@as(u32, 101), test_ctx.chunk_count);
+}
