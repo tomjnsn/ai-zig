@@ -260,21 +260,137 @@ pub fn streamText(
 
     // Create result handle
     const result = allocator.create(StreamTextResult) catch return StreamTextError.OutOfMemory;
+    errdefer {
+        result.deinit();
+        allocator.destroy(result);
+    }
     result.* = StreamTextResult.init(allocator, options);
 
-    // TODO: Start actual streaming
-    // For now, emit a placeholder finish event
-    const finish_part = StreamPart{
-        .finish = .{
-            .finish_reason = .stop,
-            .usage = .{},
-            .total_usage = .{},
-        },
+    // Build prompt using arena for temporary allocations
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var messages_list = std.array_list.Managed(Message).init(arena_allocator);
+    if (options.system) |sys| {
+        messages_list.append(.{ .role = .system, .content = .{ .text = sys } }) catch return StreamTextError.OutOfMemory;
+    }
+    if (options.prompt) |p| {
+        messages_list.append(.{ .role = .user, .content = .{ .text = p } }) catch return StreamTextError.OutOfMemory;
+    } else if (options.messages) |msgs| {
+        for (msgs) |msg| {
+            messages_list.append(msg) catch return StreamTextError.OutOfMemory;
+        }
+    }
+
+    // Convert to provider-level prompt
+    var prompt_msgs = std.array_list.Managed(provider_types.LanguageModelV3Message).init(arena_allocator);
+    for (messages_list.items) |msg| {
+        switch (msg.content) {
+            .text => |text| {
+                switch (msg.role) {
+                    .system => {
+                        prompt_msgs.append(provider_types.language_model.systemMessage(text)) catch return StreamTextError.OutOfMemory;
+                    },
+                    .user => {
+                        const m = provider_types.language_model.userTextMessage(arena_allocator, text) catch return StreamTextError.OutOfMemory;
+                        prompt_msgs.append(m) catch return StreamTextError.OutOfMemory;
+                    },
+                    .assistant => {
+                        const m = provider_types.language_model.assistantTextMessage(arena_allocator, text) catch return StreamTextError.OutOfMemory;
+                        prompt_msgs.append(m) catch return StreamTextError.OutOfMemory;
+                    },
+                    .tool => {},
+                }
+            },
+            .parts => {},
+        }
+    }
+
+    // Build call options
+    const call_options = provider_types.LanguageModelV3CallOptions{
+        .prompt = prompt_msgs.items,
+        .max_output_tokens = options.settings.max_output_tokens,
+        .temperature = if (options.settings.temperature) |t| @as(f32, @floatCast(t)) else null,
+        .stop_sequences = options.settings.stop_sequences,
+        .top_p = if (options.settings.top_p) |p| @as(f32, @floatCast(p)) else null,
+        .top_k = options.settings.top_k,
+        .presence_penalty = if (options.settings.presence_penalty) |p| @as(f32, @floatCast(p)) else null,
+        .frequency_penalty = if (options.settings.frequency_penalty) |f| @as(f32, @floatCast(f)) else null,
+        .seed = if (options.settings.seed) |s| @as(i64, @intCast(s)) else null,
     };
 
-    result.processPart(finish_part) catch return StreamTextError.OutOfMemory;
-    options.callbacks.on_part(finish_part, options.callbacks.context);
-    options.callbacks.on_complete(options.callbacks.context);
+    // Bridge: translate provider-level stream parts to ai-level
+    const BridgeCtx = struct {
+        res: *StreamTextResult,
+        cbs: StreamCallbacks,
+
+        fn onPart(ctx_ptr: ?*anyopaque, part: provider_types.LanguageModelV3StreamPart) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx_ptr.?));
+            const ai_part = translatePart(part) orelse return;
+            self.res.processPart(ai_part) catch |err| {
+                self.cbs.on_error(err, self.cbs.context);
+                return;
+            };
+            self.cbs.on_part(ai_part, self.cbs.context);
+        }
+
+        fn onError(ctx_ptr: ?*anyopaque, err: anyerror) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx_ptr.?));
+            self.cbs.on_error(err, self.cbs.context);
+        }
+
+        fn onComplete(ctx_ptr: ?*anyopaque, _: ?LanguageModelV3.StreamCompleteInfo) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx_ptr.?));
+            self.cbs.on_complete(self.cbs.context);
+        }
+
+        fn translatePart(part: provider_types.LanguageModelV3StreamPart) ?StreamPart {
+            return switch (part) {
+                .text_delta => |d| .{ .text_delta = .{ .text = d.delta } },
+                .reasoning_delta => |d| .{ .reasoning_delta = .{ .text = d.delta } },
+                .finish => |f| .{ .finish = .{
+                    .finish_reason = mapFinishReason(f.finish_reason),
+                    .usage = mapUsage(f.usage),
+                    .total_usage = mapUsage(f.usage),
+                } },
+                .@"error" => |e| .{ .@"error" = .{
+                    .message = e.message orelse "Unknown error",
+                } },
+                else => null,
+            };
+        }
+
+        fn mapFinishReason(fr: provider_types.LanguageModelV3FinishReason) FinishReason {
+            return switch (fr) {
+                .stop => .stop,
+                .length => .length,
+                .tool_calls => .tool_calls,
+                .content_filter => .content_filter,
+                .@"error" => .other,
+                .other => .other,
+                .unknown => .unknown,
+            };
+        }
+
+        fn mapUsage(u: provider_types.LanguageModelV3Usage) LanguageModelUsage {
+            return .{
+                .input_tokens = u.input_tokens.total,
+                .output_tokens = u.output_tokens.total,
+            };
+        }
+    };
+
+    var bridge = BridgeCtx{ .res = result, .cbs = options.callbacks };
+    const bridge_ptr: *anyopaque = @ptrCast(&bridge);
+
+    // Call model's doStream
+    options.model.doStream(call_options, allocator, .{
+        .on_part = BridgeCtx.onPart,
+        .on_error = BridgeCtx.onError,
+        .on_complete = BridgeCtx.onComplete,
+        .ctx = bridge_ptr,
+    });
 
     return result;
 }
