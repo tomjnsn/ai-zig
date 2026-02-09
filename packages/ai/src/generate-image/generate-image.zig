@@ -341,6 +341,14 @@ test "generateImage returns error on empty prompt" {
             return "mock-img";
         }
 
+        pub fn getMaxImagesPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 4);
+        }
+
         pub fn doGenerate(
             _: *const Self,
             _: provider_types.ImageModelV3CallOptions,
@@ -373,6 +381,14 @@ test "generateImage returns error on model failure" {
 
         pub fn getModelId(_: *const Self) []const u8 {
             return "mock-fail-img";
+        }
+
+        pub fn getMaxImagesPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 4);
         }
 
         pub fn doGenerate(

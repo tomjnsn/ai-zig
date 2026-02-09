@@ -628,17 +628,20 @@ test "streamText calls error callback on model failure" {
     var mock = MockFailStreamModel{};
     var model = provider_types.asLanguageModel(MockFailStreamModel, &mock);
 
-    const result = streamText(std.testing.allocator, .{
+    const result = try streamText(std.testing.allocator, .{
         .model = &model,
         .prompt = "This should fail during streaming",
         .callbacks = .{
             .on_part = TestCtx.onPart,
             .on_error = TestCtx.onError,
             .on_complete = TestCtx.onComplete,
-            .ctx = @ptrCast(&test_ctx),
+            .context = @ptrCast(&test_ctx),
         },
     });
-    defer result.deinit();
+    defer {
+        result.deinit();
+        std.testing.allocator.destroy(result);
+    }
 
     try std.testing.expect(test_ctx.error_received);
 }
