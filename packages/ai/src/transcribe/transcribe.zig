@@ -160,35 +160,65 @@ pub fn transcribe(
     allocator: std.mem.Allocator,
     options: TranscribeOptions,
 ) TranscribeError!TranscribeResult {
-    _ = allocator;
+    // Validate input and extract audio data
+    const audio_data: provider_types.TranscriptionModelV3CallOptions.AudioData = switch (options.audio) {
+        .data => |d| blk: {
+            if (d.data.len == 0) return TranscribeError.InvalidAudio;
+            break :blk .{ .binary = d.data };
+        },
+        .url => |u| blk: {
+            if (u.len == 0) return TranscribeError.InvalidAudio;
+            break :blk .{ .binary = u }; // TODO: fetch URL
+        },
+        .file => |f| blk: {
+            if (f.len == 0) return TranscribeError.InvalidAudio;
+            break :blk .{ .binary = f }; // TODO: read file
+        },
+    };
 
-    // Validate input
-    switch (options.audio) {
-        .data => |d| {
-            if (d.data.len == 0) {
-                return TranscribeError.InvalidAudio;
-            }
-        },
-        .url => |u| {
-            if (u.len == 0) {
-                return TranscribeError.InvalidAudio;
-            }
-        },
-        .file => |f| {
-            if (f.len == 0) {
-                return TranscribeError.InvalidAudio;
-            }
-        },
-    }
+    const media_type = switch (options.audio) {
+        .data => |d| d.mime_type,
+        else => "audio/mpeg",
+    };
 
-    // TODO: Call model.doTranscribe
-    // For now, return a placeholder result
+    // Build call options for the provider
+    const call_options = provider_types.TranscriptionModelV3CallOptions{
+        .audio = audio_data,
+        .media_type = media_type,
+    };
+
+    // Call model.doGenerate
+    const CallbackCtx = struct { result: ?TranscriptionModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+    const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
+
+    options.model.doGenerate(
+        call_options,
+        allocator,
+        struct {
+            fn onResult(ptr: ?*anyopaque, result: TranscriptionModelV3.GenerateResult) void {
+                const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
+                ctx.result = result;
+            }
+        }.onResult,
+        ctx_ptr,
+    );
+
+    const gen_success = switch (cb_ctx.result orelse return TranscribeError.ModelError) {
+        .success => |s| s,
+        .failure => return TranscribeError.ModelError,
+    };
 
     return TranscribeResult{
-        .text = "",
-        .usage = .{},
+        .text = gen_success.text,
+        .language = gen_success.language,
+        .duration_seconds = gen_success.duration_in_seconds,
+        .usage = .{
+            .duration_seconds = gen_success.duration_in_seconds,
+        },
         .response = .{
-            .model_id = "placeholder",
+            .model_id = gen_success.response.model_id,
+            .timestamp = gen_success.response.timestamp,
         },
         .warnings = null,
     };
