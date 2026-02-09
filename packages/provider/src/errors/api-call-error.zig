@@ -1,6 +1,7 @@
 const std = @import("std");
 const ai_sdk_error = @import("ai-sdk-error.zig");
 const json_value = @import("../json-value/index.zig");
+const security = @import("../security.zig");
 
 pub const AiSdkError = ai_sdk_error.AiSdkError;
 pub const AiSdkErrorInfo = ai_sdk_error.AiSdkErrorInfo;
@@ -111,9 +112,11 @@ pub const ApiCallError = struct {
         }
 
         if (self.responseBody()) |body| {
-            const max_len = @min(body.len, 500);
-            try writer.print("Response: {s}", .{body[0..max_len]});
-            if (body.len > 500) {
+            const redacted = try security.redactApiKey(body, allocator);
+            defer if (redacted.ptr != body.ptr) allocator.free(redacted);
+            const max_len = @min(redacted.len, 500);
+            try writer.print("Response: {s}", .{redacted[0..max_len]});
+            if (redacted.len > 500) {
                 try writer.writeAll("...");
             }
             try writer.writeByte('\n');
