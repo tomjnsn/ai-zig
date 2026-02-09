@@ -224,6 +224,17 @@ pub fn transcribe(
     };
 }
 
+/// Parse an SRT timestamp "HH:MM:SS,mmm" to seconds
+fn parseSrtTimestamp(s: []const u8) ?f64 {
+    // Format: "HH:MM:SS,mmm"
+    if (s.len < 12) return null;
+    const hours = std.fmt.parseFloat(f64, s[0..2]) catch return null;
+    const minutes = std.fmt.parseFloat(f64, s[3..5]) catch return null;
+    const seconds = std.fmt.parseFloat(f64, s[6..8]) catch return null;
+    const millis = std.fmt.parseFloat(f64, s[9..12]) catch return null;
+    return hours * 3600.0 + minutes * 60.0 + seconds + millis / 1000.0;
+}
+
 /// Convert SRT format to segments
 pub fn parseSrt(
     allocator: std.mem.Allocator,
@@ -265,7 +276,14 @@ pub fn parseSrt(
             },
             .timing => {
                 // Parse timing line: "00:00:00,000 --> 00:00:02,500"
-                // TODO: Implement proper SRT timing parsing
+                if (std.mem.indexOf(u8, trimmed, " --> ")) |arrow_pos| {
+                    const start_str = trimmed[0..arrow_pos];
+                    const end_str = trimmed[arrow_pos + 5 ..];
+                    if (current_segment) |*seg| {
+                        seg.start = parseSrtTimestamp(start_str) orelse 0;
+                        seg.end = parseSrtTimestamp(end_str) orelse 0;
+                    }
+                }
                 state = .text;
             },
             .text => {
