@@ -167,11 +167,17 @@ pub const GoogleGenerativeAIImageModel = struct {
 
         // Get headers
         var headers = if (self.config.headers_fn) |headers_fn|
-            headers_fn(&self.config, request_allocator)
+            headers_fn(&self.config, request_allocator) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            }
         else
             std.StringHashMap([]const u8).init(request_allocator);
 
-        headers.put("Content-Type", "application/json") catch {};
+        headers.put("Content-Type", "application/json") catch |err| {
+            callback(callback_context, .{ .failure = err });
+            return;
+        };
 
         // Serialize request body
         var body_buffer = std.ArrayList(u8).init(request_allocator);
@@ -193,7 +199,10 @@ pub const GoogleGenerativeAIImageModel = struct {
             header_list.append(.{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
-            }) catch {};
+            }) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
         }
 
         // Create context for callback
@@ -250,8 +259,14 @@ pub const GoogleGenerativeAIImageModel = struct {
         if (response.predictions) |predictions| {
             for (predictions) |pred| {
                 if (pred.bytesBase64Encoded) |b64| {
-                    const b64_copy = result_allocator.dupe(u8, b64) catch continue;
-                    images_list.append(b64_copy) catch {};
+                    const b64_copy = result_allocator.dupe(u8, b64) catch |err| {
+                        callback(callback_context, .{ .failure = err });
+                        return;
+                    };
+                    images_list.append(b64_copy) catch |err| {
+                        callback(callback_context, .{ .failure = err });
+                        return;
+                    };
                 }
             }
         }

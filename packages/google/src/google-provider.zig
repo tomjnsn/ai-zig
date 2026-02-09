@@ -196,17 +196,18 @@ fn getApiKeyFromEnv() ?[]const u8 {
 
 /// Headers function for config.
 /// Caller owns the returned HashMap and must call deinit() when done.
-fn getHeadersFn(config: *const config_mod.GoogleGenerativeAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const config_mod.GoogleGenerativeAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
     // Add API key header
     if (getApiKeyFromEnv()) |api_key| {
-        headers.put("x-goog-api-key", api_key) catch {};
+        try headers.put("x-goog-api-key", api_key);
     }
 
     // Add content-type
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     return headers;
 }

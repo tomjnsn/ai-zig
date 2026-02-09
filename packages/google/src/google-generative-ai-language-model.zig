@@ -81,12 +81,18 @@ pub const GoogleGenerativeAILanguageModel = struct {
 
         // Get headers
         var headers = if (self.config.headers_fn) |headers_fn|
-            headers_fn(&self.config, request_allocator)
+            headers_fn(&self.config, request_allocator) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            }
         else
             std.StringHashMap([]const u8).init(request_allocator);
 
         // Ensure content-type is set
-        headers.put("Content-Type", "application/json") catch {};
+        headers.put("Content-Type", "application/json") catch |err| {
+            callback(callback_context, .{ .failure = err });
+            return;
+        };
 
         // Serialize request body
         var body_buffer = std.ArrayList(u8).init(request_allocator);
@@ -108,7 +114,10 @@ pub const GoogleGenerativeAILanguageModel = struct {
             header_list.append(.{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
-            }) catch {};
+            }) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
         }
 
         // Create context for callback
@@ -173,10 +182,16 @@ pub const GoogleGenerativeAILanguageModel = struct {
                             // Handle text
                             if (part.text) |text| {
                                 if (text.len > 0) {
-                                    const text_copy = result_allocator.dupe(u8, text) catch continue;
+                                    const text_copy = result_allocator.dupe(u8, text) catch |err| {
+                                        callback(callback_context, .{ .failure = err });
+                                        return;
+                                    };
                                     content.append(.{
                                         .text = .{ .text = text_copy },
-                                    }) catch {};
+                                    }) catch |err| {
+                                        callback(callback_context, .{ .failure = err });
+                                        return;
+                                    };
                                 }
                             }
 
@@ -185,16 +200,31 @@ pub const GoogleGenerativeAILanguageModel = struct {
                                 var args_str: []const u8 = "{}";
                                 if (fc.args) |args| {
                                     var args_buffer = std.ArrayList(u8).init(request_allocator);
-                                    std.json.stringify(args, .{}, args_buffer.writer()) catch {};
-                                    args_str = result_allocator.dupe(u8, args_buffer.items) catch "{}";
+                                    std.json.stringify(args, .{}, args_buffer.writer()) catch |err| {
+                                        callback(callback_context, .{ .failure = err });
+                                        return;
+                                    };
+                                    args_str = result_allocator.dupe(u8, args_buffer.items) catch |err| {
+                                        callback(callback_context, .{ .failure = err });
+                                        return;
+                                    };
                                 }
                                 content.append(.{
                                     .tool_call = .{
-                                        .tool_call_id = result_allocator.dupe(u8, fc.name) catch "",
-                                        .tool_name = result_allocator.dupe(u8, fc.name) catch "",
+                                        .tool_call_id = result_allocator.dupe(u8, fc.name) catch |err| {
+                                            callback(callback_context, .{ .failure = err });
+                                            return;
+                                        },
+                                        .tool_name = result_allocator.dupe(u8, fc.name) catch |err| {
+                                            callback(callback_context, .{ .failure = err });
+                                            return;
+                                        },
                                         .input = args_str,
                                     },
-                                }) catch {};
+                                }) catch |err| {
+                                    callback(callback_context, .{ .failure = err });
+                                    return;
+                                };
                             }
                         }
                     }
@@ -317,7 +347,10 @@ pub const GoogleGenerativeAILanguageModel = struct {
                                         var args_str: []const u8 = "{}";
                                         if (fc.args) |args| {
                                             var args_buffer = std.ArrayList(u8).init(self.request_allocator);
-                                            std.json.stringify(args, .{}, args_buffer.writer()) catch {};
+                                            std.json.stringify(args, .{}, args_buffer.writer()) catch |err| {
+                                                self.callbacks.on_error(self.callbacks.ctx, err);
+                                                return;
+                                            };
                                             args_str = self.result_allocator.dupe(u8, args_buffer.items) catch "{}";
                                         }
                                         self.callbacks.on_part(self.callbacks.ctx, .{
@@ -397,11 +430,19 @@ pub const GoogleGenerativeAILanguageModel = struct {
 
         // Get headers
         var headers = if (self.config.headers_fn) |headers_fn|
-            headers_fn(&self.config, request_allocator)
+            headers_fn(&self.config, request_allocator) catch |err| {
+                callbacks.on_error(callbacks.ctx, err);
+                arena.deinit();
+                return;
+            }
         else
             std.StringHashMap([]const u8).init(request_allocator);
 
-        headers.put("Content-Type", "application/json") catch {};
+        headers.put("Content-Type", "application/json") catch |err| {
+            callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
+            return;
+        };
 
         // Serialize request body
         var body_buffer = std.ArrayList(u8).init(request_allocator);
@@ -425,7 +466,11 @@ pub const GoogleGenerativeAILanguageModel = struct {
             header_list.append(.{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
-            }) catch {};
+            }) catch |err| {
+                callbacks.on_error(callbacks.ctx, err);
+                arena.deinit();
+                return;
+            };
         }
 
         // Create stream state

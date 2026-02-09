@@ -210,11 +210,17 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
 
         // Get headers
         var headers = if (self.config.headers_fn) |headers_fn|
-            headers_fn(&self.config, request_allocator)
+            headers_fn(&self.config, request_allocator) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            }
         else
             std.StringHashMap([]const u8).init(request_allocator);
 
-        headers.put("Content-Type", "application/json") catch {};
+        headers.put("Content-Type", "application/json") catch |err| {
+            callback(callback_context, .{ .failure = err });
+            return;
+        };
 
         // Serialize request body
         var body_buffer = std.ArrayList(u8).init(request_allocator);
@@ -236,7 +242,10 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
             header_list.append(.{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
-            }) catch {};
+            }) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
         }
 
         // Create context for callback
@@ -298,7 +307,10 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                         callback(callback_context, .{ .failure = error.OutOfMemory });
                         return;
                     };
-                    embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch {};
+                    embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch |err| {
+                        callback(callback_context, .{ .failure = err });
+                        return;
+                    };
                 }
             }
         } else {
@@ -312,8 +324,14 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
             if (response.embeddings) |embeddings| {
                 for (embeddings) |emb| {
                     if (emb.values) |emb_values| {
-                        const values_copy = result_allocator.dupe(f32, emb_values) catch continue;
-                        embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch {};
+                        const values_copy = result_allocator.dupe(f32, emb_values) catch |err| {
+                            callback(callback_context, .{ .failure = err });
+                            return;
+                        };
+                        embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch |err| {
+                            callback(callback_context, .{ .failure = err });
+                            return;
+                        };
                     }
                 }
             }
