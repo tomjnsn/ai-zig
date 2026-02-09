@@ -136,7 +136,11 @@ pub const GoogleVertexEmbeddingModel = struct {
         var parameters = std.json.ObjectMap.init(request_allocator);
         if (provider_options) |opts| {
             if (opts.output_dimensionality) |dim| {
-                parameters.put("outputDimensionality", .{ .integer = @intCast(dim) }) catch |err| {
+                const dim_val = provider_utils.safeCast(i64, dim) catch |err| {
+                    callback(callback_context, .{ .failure = err });
+                    return;
+                };
+                parameters.put("outputDimensionality", .{ .integer = dim_val }) catch |err| {
                     callback(callback_context, .{ .failure = err });
                     return;
                 };

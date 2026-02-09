@@ -74,7 +74,7 @@ pub const RevAITranscriptionModel = struct {
             try obj.put("filter_profanity", std.json.Value{ .bool = fp });
         }
         if (options.speaker_channels_count) |scc| {
-            try obj.put("speaker_channels_count", std.json.Value{ .integer = @intCast(scc) });
+            try obj.put("speaker_channels_count", std.json.Value{ .integer = try provider_utils.safeCast(i64, scc) });
         }
         if (options.custom_vocabularies) |cv| {
             var vocab_arr = std.json.Array.init(self.allocator);
@@ -90,7 +90,7 @@ pub const RevAITranscriptionModel = struct {
             try obj.put("custom_vocabularies", std.json.Value{ .array = vocab_arr });
         }
         if (options.delete_after_seconds) |das| {
-            try obj.put("delete_after_seconds", std.json.Value{ .integer = @intCast(das) });
+            try obj.put("delete_after_seconds", std.json.Value{ .integer = try provider_utils.safeCast(i64, das) });
         }
         if (options.metadata) |m| {
             try obj.put("metadata", std.json.Value{ .string = m });

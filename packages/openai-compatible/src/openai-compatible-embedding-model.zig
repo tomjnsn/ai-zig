@@ -1,6 +1,7 @@
 const std = @import("std");
 const embedding = @import("provider").embedding_model;
 const shared = @import("provider").shared;
+const provider_utils = @import("provider-utils");
 
 const config_mod = @import("openai-compatible-config.zig");
 
@@ -41,7 +42,7 @@ pub const OpenAICompatibleEmbeddingModel = struct {
         ctx: ?*anyopaque,
     ) void {
         _ = self;
-        callback(ctx, @as(u32, @intCast(max_embeddings_per_call)));
+        callback(ctx, provider_utils.safeCast(u32, max_embeddings_per_call) catch null);
     }
 
     pub fn getSupportsParallelCalls(

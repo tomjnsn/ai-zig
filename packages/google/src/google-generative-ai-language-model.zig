@@ -560,7 +560,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
         var gen_config = std.json.ObjectMap.init(allocator);
 
         if (call_options.max_output_tokens) |max_tokens| {
-            try gen_config.put("maxOutputTokens", .{ .integer = @intCast(max_tokens) });
+            try gen_config.put("maxOutputTokens", .{ .integer = try provider_utils.safeCast(i64, max_tokens) });
         }
         if (call_options.temperature) |temp| {
             try gen_config.put("temperature", .{ .float = temp });
@@ -569,7 +569,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
             try gen_config.put("topP", .{ .float = top_p });
         }
         if (call_options.top_k) |top_k| {
-            try gen_config.put("topK", .{ .integer = @intCast(top_k) });
+            try gen_config.put("topK", .{ .integer = try provider_utils.safeCast(i64, top_k) });
         }
         if (call_options.frequency_penalty) |freq| {
             try gen_config.put("frequencyPenalty", .{ .float = freq });
@@ -578,7 +578,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
             try gen_config.put("presencePenalty", .{ .float = pres });
         }
         if (call_options.seed) |seed| {
-            try gen_config.put("seed", .{ .integer = @intCast(seed) });
+            try gen_config.put("seed", .{ .integer = try provider_utils.safeCast(i64, seed) });
         }
         if (call_options.stop_sequences) |stops| {
             var stops_array = std.json.Array.init(allocator);

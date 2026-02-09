@@ -1,6 +1,7 @@
 const std = @import("std");
 const lm = @import("../../provider/src/language-model/v3/index.zig");
 const shared = @import("../../provider/src/shared/v3/index.zig");
+const provider_utils = @import("provider-utils");
 
 const config_mod = @import("bedrock-config.zig");
 const options_mod = @import("bedrock-options.zig");
@@ -298,7 +299,7 @@ pub const BedrockChatLanguageModel = struct {
         var inference_config = std.json.ObjectMap.init(allocator);
 
         if (call_options.max_output_tokens) |max_tokens| {
-            try inference_config.put("maxTokens", .{ .integer = @intCast(max_tokens) });
+            try inference_config.put("maxTokens", .{ .integer = try provider_utils.safeCast(i64, max_tokens) });
         }
         if (call_options.temperature) |temp| {
             try inference_config.put("temperature", .{ .float = temp });

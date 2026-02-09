@@ -1,6 +1,7 @@
 const std = @import("std");
 const lm = @import("../../provider/src/language-model/v3/index.zig");
 const shared = @import("../../provider/src/shared/v3/index.zig");
+const provider_utils = @import("provider-utils");
 
 const config_mod = @import("deepseek-config.zig");
 const options_mod = @import("deepseek-options.zig");
@@ -214,7 +215,7 @@ pub const DeepSeekChatLanguageModel = struct {
         try body.put("messages", .{ .array = messages });
 
         if (call_options.max_output_tokens) |max_tokens| {
-            try body.put("max_tokens", .{ .integer = @intCast(max_tokens) });
+            try body.put("max_tokens", .{ .integer = try provider_utils.safeCast(i64, max_tokens) });
         }
         if (call_options.temperature) |temp| {
             try body.put("temperature", .{ .float = temp });

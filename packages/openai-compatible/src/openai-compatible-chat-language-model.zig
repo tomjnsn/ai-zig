@@ -1,6 +1,7 @@
 const std = @import("std");
 const lm = @import("provider").language_model;
 const shared = @import("provider").shared;
+const provider_utils = @import("provider-utils");
 
 const config_mod = @import("openai-compatible-config.zig");
 
@@ -207,7 +208,7 @@ pub const OpenAICompatibleChatLanguageModel = struct {
         try body.put("messages", .{ .array = messages });
 
         if (call_options.max_output_tokens) |max_tokens| {
-            try body.put("max_tokens", .{ .integer = @intCast(max_tokens) });
+            try body.put("max_tokens", .{ .integer = try provider_utils.safeCast(i64, max_tokens) });
         }
         if (call_options.temperature) |temp| {
             try body.put("temperature", .{ .float = temp });
@@ -216,7 +217,7 @@ pub const OpenAICompatibleChatLanguageModel = struct {
             try body.put("top_p", .{ .float = top_p });
         }
         if (call_options.seed) |seed| {
-            try body.put("seed", .{ .integer = @intCast(seed) });
+            try body.put("seed", .{ .integer = try provider_utils.safeCast(i64, seed) });
         }
         if (call_options.frequency_penalty) |penalty| {
             try body.put("frequency_penalty", .{ .float = penalty });

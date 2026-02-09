@@ -53,7 +53,7 @@ pub const OpenAIImageModel = struct {
         context: ?*anyopaque,
     ) void {
         const max_images = options_mod.modelMaxImagesPerCall(self.model_id);
-        callback(context, @intCast(max_images));
+        callback(context, provider_utils.safeCast(u32, max_images) catch null);
     }
 
     /// Generate images

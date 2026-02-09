@@ -113,7 +113,11 @@ pub const GoogleVertexImageModel = struct {
                         callback(callback_context, .{ .failure = err });
                         return;
                     };
-                    ref.put("referenceId", .{ .integer = @intCast(i + 1) }) catch |err| {
+                    const ref_id = provider_utils.safeCast(i64, i + 1) catch |err| {
+                        callback(callback_context, .{ .failure = err });
+                        return;
+                    };
+                    ref.put("referenceId", .{ .integer = ref_id }) catch |err| {
                         callback(callback_context, .{ .failure = err });
                         return;
                     };
@@ -145,7 +149,11 @@ pub const GoogleVertexImageModel = struct {
                 };
 
                 const files_len = if (call_options.files) |f| f.len else 0;
-                ref.put("referenceId", .{ .integer = @intCast(files_len + 1) }) catch |err| {
+                const mask_ref_id = provider_utils.safeCast(i64, files_len + 1) catch |err| {
+                    callback(callback_context, .{ .failure = err });
+                    return;
+                };
+                ref.put("referenceId", .{ .integer = mask_ref_id }) catch |err| {
                     callback(callback_context, .{ .failure = err });
                     return;
                 };
@@ -227,7 +235,11 @@ pub const GoogleVertexImageModel = struct {
 
         // Build parameters
         var parameters = std.json.ObjectMap.init(request_allocator);
-        parameters.put("sampleCount", .{ .integer = @intCast(call_options.n orelse 1) }) catch |err| {
+        const sample_count = provider_utils.safeCast(i64, call_options.n orelse 1) catch |err| {
+            callback(callback_context, .{ .failure = err });
+            return;
+        };
+        parameters.put("sampleCount", .{ .integer = sample_count }) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -240,7 +252,11 @@ pub const GoogleVertexImageModel = struct {
         }
 
         if (call_options.seed) |seed| {
-            parameters.put("seed", .{ .integer = @intCast(seed) }) catch |err| {
+            const seed_val = provider_utils.safeCast(i64, seed) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
+            parameters.put("seed", .{ .integer = seed_val }) catch |err| {
                 callback(callback_context, .{ .failure = err });
                 return;
             };
@@ -294,7 +310,11 @@ pub const GoogleVertexImageModel = struct {
                     }
                     if (edit.base_steps) |bs| {
                         var edit_config = std.json.ObjectMap.init(request_allocator);
-                        edit_config.put("baseSteps", .{ .integer = @intCast(bs) }) catch |err| {
+                        const bs_val = provider_utils.safeCast(i64, bs) catch |err| {
+                            callback(callback_context, .{ .failure = err });
+                            return;
+                        };
+                        edit_config.put("baseSteps", .{ .integer = bs_val }) catch |err| {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };

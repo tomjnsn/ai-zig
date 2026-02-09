@@ -243,10 +243,10 @@ pub const DeepgramSpeechModel = struct {
             try obj.put("container", std.json.Value{ .string = c });
         }
         if (options.sample_rate) |sr| {
-            try obj.put("sample_rate", std.json.Value{ .integer = @intCast(sr) });
+            try obj.put("sample_rate", std.json.Value{ .integer = try provider_utils.safeCast(i64, sr) });
         }
         if (options.bit_rate) |br| {
-            try obj.put("bit_rate", std.json.Value{ .integer = @intCast(br) });
+            try obj.put("bit_rate", std.json.Value{ .integer = try provider_utils.safeCast(i64, br) });
         }
 
         return std.json.Value{ .object = obj };

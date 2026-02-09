@@ -67,7 +67,7 @@ pub const GladiaTranscriptionModel = struct {
             try obj.put("toggle_diarization", std.json.Value{ .bool = td });
         }
         if (options.diarization_max_speakers) |dms| {
-            try obj.put("diarization_max_speakers", std.json.Value{ .integer = @intCast(dms) });
+            try obj.put("diarization_max_speakers", std.json.Value{ .integer = try provider_utils.safeCast(i64, dms) });
         }
         if (options.toggle_direct_translate) |tdt| {
             try obj.put("toggle_direct_translate", std.json.Value{ .bool = tdt });

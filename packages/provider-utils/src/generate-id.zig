@@ -1,4 +1,5 @@
 const std = @import("std");
+const safe_cast = @import("safe-cast.zig");
 
 /// Default alphabet for ID generation
 pub const default_alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -34,7 +35,7 @@ pub const IdGenerator = struct {
         var seed: u64 = undefined;
         std.posix.getrandom(std.mem.asBytes(&seed)) catch {
             // Fallback to timestamp-based seed
-            seed = @intCast(std.time.milliTimestamp());
+            seed = safe_cast.safeCast(u64, std.time.milliTimestamp()) catch 0;
         };
 
         return .{

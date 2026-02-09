@@ -20,6 +20,7 @@
 //   std.debug.print("{s}\n", .{result.text});
 
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 
 // Generate Text - Text generation with tool support
 pub const generate_text = @import("generate-text/index.zig");
@@ -119,7 +120,7 @@ pub fn generateId(allocator: std.mem.Allocator) ![]const u8 {
     var prng = std.Random.DefaultPrng.init(blk: {
         var seed: u64 = undefined;
         std.posix.getrandom(std.mem.asBytes(&seed)) catch {
-            seed = @intCast(std.time.milliTimestamp());
+            seed = provider_utils.safeCast(u64, std.time.milliTimestamp()) catch 0;
         };
         break :blk seed;
     });

@@ -77,7 +77,7 @@ pub const AssemblyAITranscriptionModel = struct {
             try obj.put("speaker_labels", std.json.Value{ .bool = sl });
         }
         if (options.speakers_expected) |se| {
-            try obj.put("speakers_expected", std.json.Value{ .integer = @intCast(se) });
+            try obj.put("speakers_expected", std.json.Value{ .integer = try provider_utils.safeCast(i64, se) });
         }
         if (options.word_boost) |wb| {
             var arr = std.json.Array.init(self.allocator);

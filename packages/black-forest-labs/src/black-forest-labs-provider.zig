@@ -68,22 +68,22 @@ pub const BlackForestLabsImageModel = struct {
         try obj.put("prompt", std.json.Value{ .string = prompt });
 
         if (options.width) |w| {
-            try obj.put("width", std.json.Value{ .integer = @intCast(w) });
+            try obj.put("width", std.json.Value{ .integer = try provider_utils.safeCast(i64, w) });
         }
         if (options.height) |h| {
-            try obj.put("height", std.json.Value{ .integer = @intCast(h) });
+            try obj.put("height", std.json.Value{ .integer = try provider_utils.safeCast(i64, h) });
         }
         if (options.seed) |s| {
-            try obj.put("seed", std.json.Value{ .integer = @intCast(s) });
+            try obj.put("seed", std.json.Value{ .integer = try provider_utils.safeCast(i64, s) });
         }
         if (options.steps) |st| {
-            try obj.put("steps", std.json.Value{ .integer = @intCast(st) });
+            try obj.put("steps", std.json.Value{ .integer = try provider_utils.safeCast(i64, st) });
         }
         if (options.guidance) |g| {
             try obj.put("guidance", std.json.Value{ .float = g });
         }
         if (options.safety_tolerance) |st| {
-            try obj.put("safety_tolerance", std.json.Value{ .integer = @intCast(st) });
+            try obj.put("safety_tolerance", std.json.Value{ .integer = try provider_utils.safeCast(i64, st) });
         }
         if (options.output_format) |of| {
             try obj.put("output_format", std.json.Value{ .string = of });

@@ -65,7 +65,7 @@ pub const LmntSpeechModel = struct {
             try obj.put("format", std.json.Value{ .string = f });
         }
         if (options.sample_rate) |sr| {
-            try obj.put("sample_rate", std.json.Value{ .integer = @intCast(sr) });
+            try obj.put("sample_rate", std.json.Value{ .integer = try provider_utils.safeCast(i64, sr) });
         }
         if (options.length) |l| {
             try obj.put("length", std.json.Value{ .float = l });

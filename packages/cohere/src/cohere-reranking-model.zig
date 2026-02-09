@@ -1,4 +1,5 @@
 const std = @import("std");
+const provider_utils = @import("provider-utils");
 
 const config_mod = @import("cohere-config.zig");
 const options_mod = @import("cohere-options.zig");
@@ -105,7 +106,11 @@ pub const CohereRerankingModel = struct {
         };
 
         if (top_n) |n| {
-            body.put("top_n", .{ .integer = @intCast(n) }) catch |err| {
+            const n_val = provider_utils.safeCast(i64, n) catch |err| {
+                callback(null, err, callback_context);
+                return;
+            };
+            body.put("top_n", .{ .integer = n_val }) catch |err| {
                 callback(null, err, callback_context);
                 return;
             };
@@ -113,7 +118,11 @@ pub const CohereRerankingModel = struct {
 
         // Add options
         if (self.options.max_tokens_per_doc) |max_tokens| {
-            body.put("max_tokens_per_doc", .{ .integer = @intCast(max_tokens) }) catch |err| {
+            const max_tokens_val = provider_utils.safeCast(i64, max_tokens) catch |err| {
+                callback(null, err, callback_context);
+                return;
+            };
+            body.put("max_tokens_per_doc", .{ .integer = max_tokens_val }) catch |err| {
                 callback(null, err, callback_context);
                 return;
             };

@@ -184,7 +184,11 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                 // Add provider options
                 if (provider_options) |opts| {
                     if (opts.output_dimensionality) |dim| {
-                        req.put("outputDimensionality", .{ .integer = @intCast(dim) }) catch |err| {
+                        const dim_val = provider_utils.safeCast(i64, dim) catch |err| {
+                            callback(callback_context, .{ .failure = err });
+                            return;
+                        };
+                        req.put("outputDimensionality", .{ .integer = dim_val }) catch |err| {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };

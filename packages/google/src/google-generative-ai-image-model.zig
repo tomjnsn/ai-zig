@@ -132,7 +132,11 @@ pub const GoogleGenerativeAIImageModel = struct {
 
         // Parameters
         var parameters = std.json.ObjectMap.init(request_allocator);
-        parameters.put("sampleCount", .{ .integer = @intCast(call_options.n orelse 1) }) catch |err| {
+        const sample_count = provider_utils.safeCast(i64, call_options.n orelse 1) catch |err| {
+            callback(callback_context, .{ .failure = err });
+            return;
+        };
+        parameters.put("sampleCount", .{ .integer = sample_count }) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };

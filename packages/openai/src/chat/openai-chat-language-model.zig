@@ -764,13 +764,13 @@ fn serializeRequest(allocator: std.mem.Allocator, request: api.OpenAIChatRequest
     try obj.put("messages", .{ .array = try messages_list.toOwnedSlice() });
 
     // Add optional fields
-    if (request.max_tokens) |mt| try obj.put("max_tokens", .{ .integer = @intCast(mt) });
-    if (request.max_completion_tokens) |mct| try obj.put("max_completion_tokens", .{ .integer = @intCast(mct) });
+    if (request.max_tokens) |mt| try obj.put("max_tokens", .{ .integer = try provider_utils.safeCast(i64, mt) });
+    if (request.max_completion_tokens) |mct| try obj.put("max_completion_tokens", .{ .integer = try provider_utils.safeCast(i64, mct) });
     if (request.temperature) |t| try obj.put("temperature", .{ .float = t });
     if (request.top_p) |tp| try obj.put("top_p", .{ .float = tp });
     if (request.frequency_penalty) |fp| try obj.put("frequency_penalty", .{ .float = fp });
     if (request.presence_penalty) |pp| try obj.put("presence_penalty", .{ .float = pp });
-    if (request.seed) |s| try obj.put("seed", .{ .integer = @intCast(s) });
+    if (request.seed) |s| try obj.put("seed", .{ .integer = try provider_utils.safeCast(i64, s) });
 
     if (request.stop) |stops| {
         var stop_list = std.array_list.Managed(json_value.JsonValue).init(allocator);
@@ -844,7 +844,7 @@ fn serializeRequest(allocator: std.mem.Allocator, request: api.OpenAIChatRequest
     }
 
     if (request.logprobs) |lp| try obj.put("logprobs", .{ .bool = lp });
-    if (request.top_logprobs) |tlp| try obj.put("top_logprobs", .{ .integer = @intCast(tlp) });
+    if (request.top_logprobs) |tlp| try obj.put("top_logprobs", .{ .integer = try provider_utils.safeCast(i64, tlp) });
     if (request.user) |u| try obj.put("user", .{ .string = u });
     if (request.store) |st| try obj.put("store", .{ .bool = st });
     if (request.reasoning_effort) |re| try obj.put("reasoning_effort", .{ .string = re });
