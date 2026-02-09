@@ -5,11 +5,13 @@ const ai = @import("ai");
 // Integration tests for tool functionality
 
 test "Tool creation" {
-    const allocator = testing.allocator;
+    // Use arena to avoid manual recursive deinit of nested json
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
     // Create a simple parameter schema
     var params = std.json.ObjectMap.init(allocator);
-    defer params.deinit();
 
     try params.put("type", std.json.Value{ .string = "object" });
 

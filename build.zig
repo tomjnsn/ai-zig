@@ -331,6 +331,31 @@ pub fn build(b: *std.Build) void {
         .{ .path = "packages/deepgram/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
         .{ .path = "packages/replicate/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod } } },
         .{ .path = "packages/azure/src/index.zig", .imports = &.{ .{ .name = "provider", .mod = provider_mod }, .{ .name = "provider-utils", .mod = provider_utils_mod }, .{ .name = "openai", .mod = openai_mod } } },
+        // Integration tests
+        .{ .path = "tests/integration/provider_test.zig", .imports = &.{
+            .{ .name = "provider", .mod = provider_mod },
+            .{ .name = "provider-utils", .mod = provider_utils_mod },
+            .{ .name = "ai", .mod = ai_mod },
+            .{ .name = "openai", .mod = openai_mod },
+            .{ .name = "anthropic", .mod = anthropic_mod },
+            .{ .name = "google", .mod = google_mod },
+            .{ .name = "mistral", .mod = mistral_mod },
+            .{ .name = "cohere", .mod = cohere_mod },
+            .{ .name = "groq", .mod = groq_mod },
+            .{ .name = "deepseek", .mod = deepseek_mod },
+            .{ .name = "xai", .mod = xai_mod },
+            .{ .name = "perplexity", .mod = perplexity_mod },
+            .{ .name = "togetherai", .mod = togetherai_mod },
+            .{ .name = "fireworks", .mod = fireworks_mod },
+            .{ .name = "elevenlabs", .mod = elevenlabs_mod },
+            .{ .name = "deepgram", .mod = deepgram_mod },
+        } },
+        .{ .path = "tests/integration/similarity_test.zig", .imports = &.{
+            .{ .name = "ai", .mod = ai_mod },
+        } },
+        .{ .path = "tests/integration/tool_test.zig", .imports = &.{
+            .{ .name = "ai", .mod = ai_mod },
+        } },
     };
 
     for (test_configs) |config| {
