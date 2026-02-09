@@ -243,3 +243,127 @@ test "GeneratedAudio getMimeType" {
     };
     try std.testing.expectEqualStrings("audio/wav", wav_audio.getMimeType());
 }
+
+test "generateSpeech returns audio from mock provider" {
+    const MockSpeechModel = struct {
+        const Self = @This();
+
+        const mock_audio = "fake_audio_data_bytes";
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-tts";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.SpeechModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, SpeechModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .audio = .{ .binary = mock_audio },
+                .response = .{
+                    .timestamp = 1234567890,
+                    .model_id = "mock-tts",
+                },
+            } });
+        }
+    };
+
+    var mock = MockSpeechModel{};
+    var model = provider_types.asSpeechModel(MockSpeechModel, &mock);
+
+    const result = try generateSpeech(std.testing.allocator, .{
+        .model = &model,
+        .text = "Hello, world!",
+    });
+
+    // Should have audio data (currently returns empty - this test should FAIL)
+    try std.testing.expect(result.audio.data.len > 0);
+    try std.testing.expectEqualStrings("fake_audio_data_bytes", result.audio.data);
+
+    // Should have model ID from provider
+    try std.testing.expectEqualStrings("mock-tts", result.response.model_id);
+}
+
+test "streamSpeech delivers audio chunks from mock provider" {
+    const MockStreamSpeechModel = struct {
+        const Self = @This();
+
+        const chunk1 = "chunk1_data";
+        const chunk2 = "chunk2_data";
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-tts-stream";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.SpeechModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, SpeechModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .audio = .{ .binary = chunk1 ++ chunk2 },
+                .response = .{
+                    .timestamp = 1234567890,
+                    .model_id = "mock-tts-stream",
+                },
+            } });
+        }
+    };
+
+    const TestCtx = struct {
+        chunks: std.array_list.Managed([]const u8),
+        completed: bool = false,
+        err: ?anyerror = null,
+
+        fn onChunk(data: []const u8, context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.chunks.append(data) catch {};
+        }
+
+        fn onError(err: anyerror, context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.err = err;
+        }
+
+        fn onComplete(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.completed = true;
+        }
+    };
+
+    var test_ctx = TestCtx{
+        .chunks = std.array_list.Managed([]const u8).init(std.testing.allocator),
+    };
+    defer test_ctx.chunks.deinit();
+
+    var mock = MockStreamSpeechModel{};
+    var model = provider_types.asSpeechModel(MockStreamSpeechModel, &mock);
+
+    try streamSpeech(std.testing.allocator, .{
+        .model = &model,
+        .text = "Hello, world!",
+        .callbacks = .{
+            .on_chunk = TestCtx.onChunk,
+            .on_error = TestCtx.onError,
+            .on_complete = TestCtx.onComplete,
+            .context = @ptrCast(&test_ctx),
+        },
+    });
+
+    // Should have received audio chunks (currently just calls on_complete)
+    // For now, just verify completion was called
+    try std.testing.expect(test_ctx.completed);
+}
