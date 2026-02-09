@@ -3,17 +3,63 @@ const std = @import("std");
 /// Validate a URL for use as an API endpoint.
 /// Checks scheme, basic structure, and optionally rejects non-HTTPS URLs.
 pub fn validateUrl(url: []const u8, allow_http: bool) !void {
-    // TODO: Implement validation
-    _ = url;
-    _ = allow_http;
+    if (url.len == 0) return error.InvalidUrl;
+
+    // Check for valid scheme
+    if (std.mem.startsWith(u8, url, "https://")) {
+        if (url.len <= "https://".len) return error.InvalidUrl;
+        return; // valid
+    }
+
+    if (std.mem.startsWith(u8, url, "http://")) {
+        if (url.len <= "http://".len) return error.InvalidUrl;
+        if (!allow_http) return error.InsecureUrl;
+        return; // valid when http is allowed
+    }
+
+    // No valid scheme found
+    return error.InvalidUrl;
 }
 
 /// Normalize a URL by removing duplicate slashes in the path portion.
+/// Preserves the double slash after the scheme (e.g., "https://").
 /// Caller owns the returned slice if it differs from input.
 pub fn normalizeUrl(url: []const u8, allocator: std.mem.Allocator) ![]const u8 {
-    // TODO: Implement normalization
-    _ = allocator;
-    return url;
+    // Find the start of the path (after "scheme://host")
+    const scheme_end = std.mem.indexOf(u8, url, "://") orelse return url;
+    const after_scheme = scheme_end + 3; // skip "://"
+
+    // Find the first slash after the host
+    const path_start = std.mem.indexOfScalarPos(u8, url, after_scheme, '/') orelse return url;
+
+    // Check if there are any duplicate slashes in the path
+    var has_duplicates = false;
+    var i: usize = path_start;
+    while (i < url.len - 1) : (i += 1) {
+        if (url[i] == '/' and url[i + 1] == '/') {
+            has_duplicates = true;
+            break;
+        }
+    }
+
+    if (!has_duplicates) return url;
+
+    // Build normalized URL
+    var result = std.array_list.Managed(u8).init(allocator);
+    errdefer result.deinit();
+
+    // Copy everything up to and including the first path slash
+    try result.appendSlice(url[0 .. path_start + 1]);
+
+    // Copy path, collapsing duplicate slashes
+    var prev_was_slash = true; // we just wrote the first slash
+    for (url[path_start + 1 ..]) |c| {
+        if (c == '/' and prev_was_slash) continue;
+        try result.append(c);
+        prev_was_slash = (c == '/');
+    }
+
+    return result.toOwnedSlice();
 }
 
 // ============================================================================
