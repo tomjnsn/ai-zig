@@ -103,6 +103,11 @@ pub const security = @import("provider").security;
 pub const redactApiKey = security.redactApiKey;
 pub const containsApiKey = security.containsApiKey;
 
+// URL validation
+pub const url_validation = @import("url-validation.zig");
+pub const validateUrl = url_validation.validateUrl;
+pub const normalizeUrl = url_validation.normalizeUrl;
+
 // API key and settings loading
 pub const load_api_key = @import("load-api-key.zig");
 
