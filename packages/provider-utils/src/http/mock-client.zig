@@ -143,7 +143,9 @@ pub const MockHttpClient = struct {
             .url = req.url,
             .headers = req.headers,
             .body = req.body,
-        }) catch {};
+        }) catch |err| {
+            std.log.warn("MockHttpClient: failed to record request: {}", .{err});
+        };
 
         // Return configured error if set
         if (self.error_response) |err| {
@@ -183,7 +185,9 @@ pub const MockHttpClient = struct {
             .url = req.url,
             .headers = req.headers,
             .body = req.body,
-        }) catch {};
+        }) catch |err| {
+            std.log.warn("MockHttpClient: failed to record request: {}", .{err});
+        };
 
         // Return configured error if set
         if (self.error_response) |err| {
@@ -392,7 +396,9 @@ test "MockHttpClient streaming sends chunks" {
             .on_chunk = struct {
                 fn onChunk(c: ?*anyopaque, chunk: []const u8) void {
                     const context: *Context = @ptrCast(@alignCast(c.?));
-                    context.chunks.append(context.alloc, chunk) catch {};
+                    context.chunks.append(context.alloc, chunk) catch |err| {
+                        std.log.warn("MockHttpClient test: failed to record chunk: {}", .{err});
+                    };
                 }
             }.onChunk,
             .on_complete = struct {
