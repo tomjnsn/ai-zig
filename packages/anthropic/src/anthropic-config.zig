@@ -10,7 +10,7 @@ pub const AnthropicConfig = struct {
     base_url: []const u8,
 
     /// Function to get headers
-    headers_fn: *const fn (*const AnthropicConfig, std.mem.Allocator) std.StringHashMap([]const u8),
+    headers_fn: *const fn (*const AnthropicConfig, std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8),
 
     /// Optional HTTP client
     http_client: ?provider_utils.HttpClient = null,
@@ -25,7 +25,7 @@ pub const AnthropicConfig = struct {
     }
 
     /// Get headers for a request
-    pub fn getHeaders(self: *const AnthropicConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    pub fn getHeaders(self: *const AnthropicConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
         return self.headers_fn(self, allocator);
     }
 };
@@ -43,7 +43,7 @@ test "AnthropicConfig buildUrl" {
         .provider = "anthropic.messages",
         .base_url = "https://api.anthropic.com/v1",
         .headers_fn = struct {
-            fn getHeaders(_: *const AnthropicConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+            fn getHeaders(_: *const AnthropicConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
                 return std.StringHashMap([]const u8).init(alloc);
             }
         }.getHeaders,

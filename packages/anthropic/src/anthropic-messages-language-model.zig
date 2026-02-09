@@ -156,7 +156,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         const url = try self.config.buildUrl(request_allocator, "/messages", self.model_id);
 
         // Get headers
-        var headers = self.config.getHeaders(request_allocator);
+        var headers = try self.config.getHeaders(request_allocator);
 
         // Add beta header if needed
         if (all_betas.count() > 0) {
@@ -190,7 +190,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         var response_data: ?[]const u8 = null;
         var response_headers: ?std.StringHashMap([]const u8) = null;
 
-        http_client.post(url, headers, body, request_allocator, struct {
+        try http_client.post(url, headers, body, request_allocator, struct {
             fn onResponse(ctx: *anyopaque, resp_headers: std.StringHashMap([]const u8), resp_body: []const u8) void {
                 const data = @as(*struct { body: *?[]const u8, headers: *?std.StringHashMap([]const u8) }, @ptrCast(@alignCast(ctx)));
                 data.body.* = resp_body;
@@ -368,7 +368,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         const url = try self.config.buildUrl(request_allocator, "/messages", self.model_id);
 
         // Get headers
-        var headers = self.config.getHeaders(request_allocator);
+        var headers = try self.config.getHeaders(request_allocator);
         if (call_options.headers) |user_headers| {
             var iter = user_headers.iterator();
             while (iter.next()) |entry| {
@@ -718,7 +718,7 @@ test "AnthropicMessagesLanguageModel basic" {
         .provider = "anthropic.messages",
         .base_url = "https://api.anthropic.com/v1",
         .headers_fn = struct {
-            fn getHeaders(_: *const config_mod.AnthropicConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+            fn getHeaders(_: *const config_mod.AnthropicConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
                 return std.StringHashMap([]const u8).init(alloc);
             }
         }.getHeaders,
@@ -762,7 +762,7 @@ test "Anthropic config buildUrl" {
         .provider = "anthropic.messages",
         .base_url = "https://api.anthropic.com/v1",
         .headers_fn = struct {
-            fn getHeaders(_: *const config_mod.AnthropicConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+            fn getHeaders(_: *const config_mod.AnthropicConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
                 return std.StringHashMap([]const u8).init(alloc);
             }
         }.getHeaders,

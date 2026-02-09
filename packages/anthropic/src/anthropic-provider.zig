@@ -139,20 +139,21 @@ fn getApiKeyFromEnv() ?[]const u8 {
 }
 
 /// Headers function for config
-fn getHeadersFn(config: *const config_mod.AnthropicConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const config_mod.AnthropicConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
     // Add API key header
     if (getApiKeyFromEnv()) |api_key| {
-        headers.put("x-api-key", api_key) catch {};
+        try headers.put("x-api-key", api_key);
     }
 
     // Add Anthropic version header
-    headers.put("anthropic-version", config_mod.anthropic_version) catch {};
+    try headers.put("anthropic-version", config_mod.anthropic_version);
 
     // Add content-type
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     return headers;
 }
