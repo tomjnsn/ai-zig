@@ -325,6 +325,103 @@ test "StreamTextResult init and deinit" {
     try std.testing.expectEqual(@as(usize, 0), result.text.items.len);
 }
 
+test "streamText delivers chunks from mock provider" {
+    const allocator = std.testing.allocator;
+
+    const MockModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-model";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.NotImplemented });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            // Emit text deltas
+            callbacks.on_part(callbacks.ctx, provider_types.language_model.textDelta("t1", "Hello"));
+            callbacks.on_part(callbacks.ctx, provider_types.language_model.textDelta("t1", " World"));
+            // Emit finish
+            callbacks.on_part(callbacks.ctx, provider_types.language_model.finish(
+                provider_types.LanguageModelV3Usage.initWithTotals(5, 10),
+                .stop,
+            ));
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockModel{};
+    var model = provider_types.asLanguageModel(MockModel, &mock);
+
+    // Track received text via ai-level callbacks
+    const TestCtx = struct {
+        text_buf: std.array_list.Managed(u8),
+
+        fn onPart(part: StreamPart, ctx_raw: ?*anyopaque) void {
+            if (ctx_raw) |p| {
+                const self: *@This() = @ptrCast(@alignCast(p));
+                switch (part) {
+                    .text_delta => |d| {
+                        self.text_buf.appendSlice(d.text) catch @panic("OOM in test");
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        fn onError(_: anyerror, _: ?*anyopaque) void {}
+        fn onComplete(_: ?*anyopaque) void {}
+    };
+
+    var test_ctx = TestCtx{ .text_buf = std.array_list.Managed(u8).init(allocator) };
+    defer test_ctx.text_buf.deinit();
+
+    const ctx_ptr: *anyopaque = @ptrCast(&test_ctx);
+    const result = try streamText(allocator, .{
+        .model = &model,
+        .prompt = "Say hello",
+        .callbacks = .{
+            .on_part = TestCtx.onPart,
+            .on_error = TestCtx.onError,
+            .on_complete = TestCtx.onComplete,
+            .context = ctx_ptr,
+        },
+    });
+    defer {
+        result.deinit();
+        allocator.destroy(result);
+    }
+
+    // The streaming should have delivered "Hello World" via the model's doStream
+    try std.testing.expectEqualStrings("Hello World", result.getText());
+}
+
 test "StreamTextResult process text delta" {
     const allocator = std.testing.allocator;
     const callbacks = StreamCallbacks{
