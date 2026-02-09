@@ -251,33 +251,35 @@ fn getApiKeyFromEnv() ?[]const u8 {
 
 /// Headers function for Azure config.
 /// Caller owns the returned HashMap and must call deinit() when done.
-fn getHeadersFn(config: *const config_mod.AzureOpenAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const config_mod.AzureOpenAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
     // Add API key header
     if (getApiKeyFromEnv()) |api_key| {
-        headers.put("api-key", api_key) catch {};
+        try headers.put("api-key", api_key);
     }
 
     // Add content-type
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     return headers;
 }
 
 /// Headers function for OpenAI config (used by models)
-fn getOpenAIHeadersFn(config: *const openai_config.OpenAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getOpenAIHeadersFn(config: *const openai_config.OpenAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
     // Add API key header (Azure uses api-key instead of Authorization)
     if (getApiKeyFromEnv()) |api_key| {
-        headers.put("api-key", api_key) catch {};
+        try headers.put("api-key", api_key);
     }
 
     // Add content-type
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     return headers;
 }
@@ -738,7 +740,7 @@ test "Azure headers include Content-Type" {
     });
     defer provider.deinit();
 
-    var headers = getHeadersFn(&provider.config, allocator);
+    var headers = try getHeadersFn(&provider.config, allocator);
     defer headers.deinit();
 
     try std.testing.expect(headers.get("Content-Type") != null);
@@ -755,7 +757,7 @@ test "Azure uses api-key header format" {
     });
     defer provider.deinit();
 
-    var headers = getOpenAIHeadersFn(&provider.buildOpenAIConfig("azure.chat"), allocator);
+    var headers = try getOpenAIHeadersFn(&provider.buildOpenAIConfig("azure.chat"), allocator);
     defer headers.deinit();
 
     // Content-Type should be present

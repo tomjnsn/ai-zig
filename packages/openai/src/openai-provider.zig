@@ -249,18 +249,19 @@ fn getApiKeyFromEnv() ?[]const u8 {
 
 /// Headers function for config.
 /// Caller owns the returned HashMap and must call deinit() when done.
-fn getHeadersFn(config: *const config_mod.OpenAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const config_mod.OpenAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
     // Add authorization header
     if (getApiKeyFromEnv()) |api_key| {
-        const auth_value = std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key}) catch return headers;
-        headers.put("Authorization", auth_value) catch {};
+        const auth_value = try std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key});
+        try headers.put("Authorization", auth_value);
     }
 
     // Add content-type
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     return headers;
 }

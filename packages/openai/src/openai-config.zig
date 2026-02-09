@@ -14,7 +14,7 @@ pub const OpenAIConfig = struct {
     url_builder: ?*const fn (config: *const OpenAIConfig, path: []const u8, model_id: []const u8) []const u8 = null,
 
     /// Function to get headers
-    headers_fn: *const fn (*const OpenAIConfig, std.mem.Allocator) std.StringHashMap([]const u8),
+    headers_fn: *const fn (*const OpenAIConfig, std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8),
 
     /// HTTP client to use
     http_client: ?HttpClient = null,
@@ -40,7 +40,7 @@ pub const OpenAIConfig = struct {
     }
 
     /// Get headers for the request
-    pub fn getHeaders(self: *const Self, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+    pub fn getHeaders(self: *const Self, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
         return self.headers_fn(self, allocator);
     }
 
@@ -127,7 +127,7 @@ test "OpenAIConfig buildUrl" {
         .provider = "openai.chat",
         .base_url = "https://api.openai.com/v1",
         .headers_fn = struct {
-            fn getHeaders(_: *const OpenAIConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+            fn getHeaders(_: *const OpenAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
                 return std.StringHashMap([]const u8).init(alloc);
             }
         }.getHeaders,
@@ -145,7 +145,7 @@ test "OpenAIConfig isFileId" {
         .provider = "openai.responses",
         .base_url = "https://api.openai.com/v1",
         .headers_fn = struct {
-            fn getHeaders(_: *const OpenAIConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+            fn getHeaders(_: *const OpenAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
                 return std.StringHashMap([]const u8).init(alloc);
             }
         }.getHeaders,

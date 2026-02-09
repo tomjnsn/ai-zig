@@ -18,7 +18,7 @@ pub const AzureOpenAIConfig = struct {
 
     /// Function to get headers.
     /// Caller owns the returned HashMap and must call deinit() when done.
-    headers_fn: ?*const fn (*const AzureOpenAIConfig, std.mem.Allocator) std.StringHashMap([]const u8) = null,
+    headers_fn: ?*const fn (*const AzureOpenAIConfig, std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) = null,
 
     /// Custom HTTP client
     http_client: ?HttpClient = null,

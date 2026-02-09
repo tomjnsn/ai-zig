@@ -101,7 +101,7 @@ pub const OpenAITranscriptionModel = struct {
         };
 
         // Get headers
-        var headers = self.config.getHeaders(request_allocator);
+        var headers = try self.config.getHeaders(request_allocator);
         if (call_options.headers) |user_headers| {
             var iter = user_headers.iterator();
             while (iter.next()) |entry| {
@@ -340,7 +340,7 @@ test "OpenAITranscriptionModel basic" {
         .provider = "openai.transcription",
         .base_url = "https://api.openai.com/v1",
         .headers_fn = struct {
-            fn getHeaders(_: *const config_mod.OpenAIConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+            fn getHeaders(_: *const config_mod.OpenAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
                 return std.StringHashMap([]const u8).init(alloc);
             }
         }.getHeaders,
