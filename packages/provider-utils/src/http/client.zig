@@ -195,6 +195,8 @@ pub const HttpClient = struct {
         }
     }
 
+    pub const max_header_count = 64;
+
     /// Convenience method for making a POST request
     pub fn post(
         self: HttpClient,
@@ -205,13 +207,13 @@ pub const HttpClient = struct {
         on_response: anytype,
         on_error: anytype,
         ctx: anytype,
-    ) void {
+    ) !void {
         // Convert headers to slice
-        var header_list: [64]Header = undefined;
+        var header_list: [max_header_count]Header = undefined;
         var header_count: usize = 0;
         var iter = headers.iterator();
         while (iter.next()) |entry| {
-            if (header_count >= 64) break;
+            if (header_count >= max_header_count) return error.TooManyHeaders;
             header_list[header_count] = .{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
@@ -516,4 +518,40 @@ test "Request with no headers" {
     try std.testing.expectEqual(@as(usize, 0), req.headers.len);
     try std.testing.expect(req.body == null);
     try std.testing.expect(req.timeout_ms == null);
+}
+
+test "returns error when header count exceeds limit" {
+    const allocator = std.testing.allocator;
+
+    // Build a StringHashMap with more than max_header_count entries
+    var headers = std.StringHashMap([]const u8).init(allocator);
+    defer headers.deinit();
+
+    var key_bufs: [HttpClient.max_header_count + 1][16]u8 = undefined;
+    for (0..HttpClient.max_header_count + 1) |i| {
+        const key = std.fmt.bufPrint(&key_bufs[i], "X-Header-{d}", .{i}) catch unreachable;
+        try headers.put(key, "value");
+    }
+
+    // Create a mock client via the mock module
+    const mock_client_mod = @import("mock-client.zig");
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+    const client = mock.asInterface();
+
+    const result = client.post(
+        "https://example.com",
+        headers,
+        "{}",
+        allocator,
+        struct {
+            fn onResponse(_: ?*anyopaque, _: HttpClient.Response) void {}
+        }.onResponse,
+        struct {
+            fn onError(_: ?*anyopaque, _: HttpClient.HttpError) void {}
+        }.onError,
+        @as(?*anyopaque, null),
+    );
+
+    try std.testing.expectError(error.TooManyHeaders, result);
 }
