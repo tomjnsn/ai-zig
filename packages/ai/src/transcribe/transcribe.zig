@@ -376,3 +376,36 @@ test "transcribe returns text from mock provider" {
     // Should have model ID from provider
     try std.testing.expectEqualStrings("mock-transcribe", result.response.model_id);
 }
+
+test "parseSrt parses SRT format correctly" {
+    const srt_content =
+        \\1
+        \\00:00:00,000 --> 00:00:02,500
+        \\Hello world
+        \\
+        \\2
+        \\00:00:02,500 --> 00:00:05,000
+        \\How are you
+        \\
+    ;
+
+    const segments = try parseSrt(std.testing.allocator, srt_content);
+    defer {
+        for (segments) |seg| {
+            std.testing.allocator.free(seg.text);
+        }
+        std.testing.allocator.free(segments);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), segments.len);
+
+    try std.testing.expectEqualStrings("Hello world", segments[0].text);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.0), segments[0].start, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f64, 2.5), segments[0].end, 0.001);
+    try std.testing.expectEqual(@as(?u32, 1), segments[0].id);
+
+    try std.testing.expectEqualStrings("How are you", segments[1].text);
+    try std.testing.expectApproxEqAbs(@as(f64, 2.5), segments[1].start, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f64, 5.0), segments[1].end, 0.001);
+    try std.testing.expectEqual(@as(?u32, 2), segments[1].id);
+}
