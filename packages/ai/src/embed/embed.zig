@@ -256,3 +256,71 @@ test "dotProduct simple" {
     // 1*4 + 2*5 + 3*6 = 4 + 10 + 18 = 32
     try std.testing.expectApproxEqAbs(@as(f64, 32.0), product, 0.0001);
 }
+
+test "embed returns embeddings from mock provider" {
+    const MockEmbeddingModel = struct {
+        const Self = @This();
+
+        const mock_values = [_]f32{ 0.1, 0.2, 0.3 };
+        const mock_embeddings = [_]provider_types.EmbeddingModelV3Embedding{
+            &mock_values,
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-embedding";
+        }
+
+        pub fn getMaxEmbeddingsPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 100);
+        }
+
+        pub fn getSupportsParallelCalls(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, bool) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, true);
+        }
+
+        pub fn doEmbed(
+            _: *const Self,
+            _: provider_types.EmbeddingModelCallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, EmbeddingModelV3.EmbedResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .embeddings = &mock_embeddings,
+                .usage = .{ .tokens = 5 },
+            } });
+        }
+    };
+
+    var mock = MockEmbeddingModel{};
+    var model = provider_types.asEmbeddingModel(MockEmbeddingModel, &mock);
+
+    const result = try embed(std.testing.allocator, .{
+        .model = &model,
+        .value = "test input",
+    });
+
+    // Should have 3 embedding values (currently returns empty - this test should FAIL)
+    try std.testing.expectEqual(@as(usize, 3), result.embedding.values.len);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.1), result.embedding.values[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.2), result.embedding.values[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f64, 0.3), result.embedding.values[2], 0.001);
+
+    // Should have usage info
+    try std.testing.expectEqual(@as(?u64, 5), result.usage.tokens);
+
+    // Should have model ID from provider
+    try std.testing.expectEqualStrings("mock-embedding", result.response.model_id);
+}
