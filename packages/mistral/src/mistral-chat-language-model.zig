@@ -77,31 +77,246 @@ pub const MistralChatLanguageModel = struct {
         }
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).init(request_allocator);
+        var body_buffer = std.array_list.Managed(u8).init(request_allocator);
         std.json.stringify(request_body, .{}, body_buffer.writer()) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
 
-        // TODO: Use url, headers, and body_buffer to make actual HTTP request
-        _ = url;
-        headers.deinit();
-        body_buffer.deinit();
-
-        // For now, return placeholder result
-        const result = lm.LanguageModelV3.GenerateSuccess{
-            .content = &[_]lm.LanguageModelV3Content{},
-            .finish_reason = .stop,
-            .usage = .{
-                .prompt_tokens = 0,
-                .completion_tokens = 0,
-            },
-            .warnings = &[_]shared.SharedV3Warning{},
+        // Get HTTP client
+        const http_client = self.config.http_client orelse {
+            // No HTTP client - return placeholder for testing
+            callback(callback_context, .{ .success = .{
+                .content = &[_]lm.LanguageModelV3Content{},
+                .finish_reason = .stop,
+                .usage = lm.LanguageModelV3Usage.initWithTotals(0, 0),
+            } });
+            return;
         };
 
-        _ = result_allocator;
-        callback(callback_context, .{ .success = result });
+        // Convert headers to slice
+        headers.put("Content-Type", "application/json") catch |err| {
+            callback(callback_context, .{ .failure = err });
+            return;
+        };
+        var header_list = std.array_list.Managed(provider_utils.HttpClient.Header).init(request_allocator);
+        var header_iter = headers.iterator();
+        while (header_iter.next()) |entry| {
+            header_list.append(.{
+                .name = entry.key_ptr.*,
+                .value = entry.value_ptr.*,
+            }) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
+        }
+
+        // Synchronous HTTP response capture
+        const ResponseCtx = struct {
+            response_body: ?[]const u8 = null,
+            response_error: ?provider_utils.HttpClient.HttpError = null,
+        };
+        var response_ctx = ResponseCtx{};
+
+        http_client.request(
+            .{
+                .method = .POST,
+                .url = url,
+                .headers = header_list.items,
+                .body = body_buffer.items,
+            },
+            request_allocator,
+            struct {
+                fn onResponse(ctx: ?*anyopaque, response: provider_utils.HttpClient.Response) void {
+                    const rctx: *ResponseCtx = @ptrCast(@alignCast(ctx.?));
+                    rctx.response_body = response.body;
+                }
+            }.onResponse,
+            struct {
+                fn onError(ctx: ?*anyopaque, err: provider_utils.HttpClient.HttpError) void {
+                    const rctx: *ResponseCtx = @ptrCast(@alignCast(ctx.?));
+                    rctx.response_error = err;
+                }
+            }.onError,
+            &response_ctx,
+        );
+
+        if (response_ctx.response_error != null) {
+            callback(callback_context, .{ .failure = error.HttpRequestFailed });
+            return;
+        }
+
+        const response_body = response_ctx.response_body orelse {
+            callback(callback_context, .{ .failure = error.NoResponse });
+            return;
+        };
+
+        // Parse response JSON
+        const parsed = std.json.parseFromSlice(std.json.Value, request_allocator, response_body, .{}) catch {
+            callback(callback_context, .{ .failure = error.InvalidResponse });
+            return;
+        };
+        const root = parsed.value;
+
+        // Extract content from choices[0].message.content
+        var content_list = std.array_list.Managed(lm.LanguageModelV3Content).init(result_allocator);
+        if (root.object.get("choices")) |choices_val| {
+            if (choices_val.array.items.len > 0) {
+                const choice = choices_val.array.items[0];
+                if (choice.object.get("message")) |message| {
+                    if (message.object.get("content")) |content_val| {
+                        if (content_val == .string) {
+                            content_list.append(.{ .text = .{ .text = content_val.string } }) catch {};
+                        }
+                    }
+                }
+            }
+        }
+
+        // Extract usage
+        var input_tokens: u64 = 0;
+        var output_tokens: u64 = 0;
+        if (root.object.get("usage")) |usage_val| {
+            if (usage_val.object.get("prompt_tokens")) |pt| {
+                if (pt == .integer) input_tokens = @intCast(pt.integer);
+            }
+            if (usage_val.object.get("completion_tokens")) |ct| {
+                if (ct == .integer) output_tokens = @intCast(ct.integer);
+            }
+        }
+
+        // Extract finish reason
+        var finish_reason: lm.LanguageModelV3FinishReason = .stop;
+        if (root.object.get("choices")) |choices_val| {
+            if (choices_val.array.items.len > 0) {
+                const choice = choices_val.array.items[0];
+                if (choice.object.get("finish_reason")) |fr| {
+                    if (fr == .string) {
+                        finish_reason = map_finish.mapMistralFinishReason(fr.string);
+                    }
+                }
+            }
+        }
+
+        callback(callback_context, .{ .success = .{
+            .content = content_list.toOwnedSlice() catch &[_]lm.LanguageModelV3Content{},
+            .finish_reason = finish_reason,
+            .usage = lm.LanguageModelV3Usage.initWithTotals(input_tokens, output_tokens),
+        } });
     }
+
+    /// Stream state for SSE parsing (OpenAI-compatible format)
+    const StreamState = struct {
+        callbacks: lm.LanguageModelV3.StreamCallbacks,
+        result_allocator: std.mem.Allocator,
+        request_allocator: std.mem.Allocator,
+        is_text_active: bool = false,
+        finish_reason: lm.LanguageModelV3FinishReason = .unknown,
+        usage: lm.LanguageModelV3Usage = lm.LanguageModelV3Usage.init(),
+        partial_line: std.array_list.Managed(u8),
+
+        fn init(
+            callbacks: lm.LanguageModelV3.StreamCallbacks,
+            result_allocator: std.mem.Allocator,
+            request_allocator: std.mem.Allocator,
+        ) StreamState {
+            return .{
+                .callbacks = callbacks,
+                .result_allocator = result_allocator,
+                .request_allocator = request_allocator,
+                .partial_line = std.array_list.Managed(u8).init(request_allocator),
+            };
+        }
+
+        fn processChunk(self: *StreamState, chunk: []const u8) void {
+            self.partial_line.appendSlice(chunk) catch return;
+
+            while (std.mem.indexOf(u8, self.partial_line.items, "\n")) |newline_pos| {
+                const line = self.partial_line.items[0..newline_pos];
+                self.processLine(line);
+
+                const remaining = self.partial_line.items[newline_pos + 1 ..];
+                std.mem.copyForwards(u8, self.partial_line.items[0..remaining.len], remaining);
+                self.partial_line.shrinkRetainingCapacity(remaining.len);
+            }
+        }
+
+        fn processLine(self: *StreamState, line: []const u8) void {
+            const trimmed = std.mem.trim(u8, line, " \r\n");
+            if (trimmed.len == 0) return;
+
+            if (std.mem.startsWith(u8, trimmed, "data: ")) {
+                const json_data = trimmed[6..];
+
+                // Skip [DONE] marker
+                if (std.mem.eql(u8, json_data, "[DONE]")) return;
+
+                // Parse JSON
+                const parsed = std.json.parseFromSlice(
+                    std.json.Value,
+                    self.request_allocator,
+                    json_data,
+                    .{},
+                ) catch return;
+                const root = parsed.value;
+
+                // Extract delta content from choices[0].delta
+                if (root.object.get("choices")) |choices_val| {
+                    if (choices_val.array.items.len > 0) {
+                        const choice = choices_val.array.items[0];
+
+                        if (choice.object.get("delta")) |delta| {
+                            if (delta.object.get("content")) |content_val| {
+                                if (content_val == .string and content_val.string.len > 0) {
+                                    if (!self.is_text_active) {
+                                        self.callbacks.on_part(self.callbacks.ctx, .{
+                                            .text_start = .{ .id = "text-0" },
+                                        });
+                                        self.is_text_active = true;
+                                    }
+                                    const text_copy = self.result_allocator.dupe(u8, content_val.string) catch return;
+                                    self.callbacks.on_part(self.callbacks.ctx, .{
+                                        .text_delta = .{ .id = "text-0", .delta = text_copy },
+                                    });
+                                }
+                            }
+                        }
+
+                        if (choice.object.get("finish_reason")) |fr| {
+                            if (fr == .string) {
+                                self.finish_reason = map_finish.mapMistralFinishReason(fr.string);
+                            }
+                        }
+                    }
+                }
+
+                // Extract usage
+                if (root.object.get("usage")) |usage_val| {
+                    if (usage_val.object.get("prompt_tokens")) |pt| {
+                        if (pt == .integer) self.usage.input_tokens.total = @intCast(pt.integer);
+                    }
+                    if (usage_val.object.get("completion_tokens")) |ct| {
+                        if (ct == .integer) self.usage.output_tokens.total = @intCast(ct.integer);
+                    }
+                }
+            }
+        }
+
+        fn finish(self: *StreamState) void {
+            if (self.is_text_active) {
+                self.callbacks.on_part(self.callbacks.ctx, .{ .text_end = .{ .id = "text-0" } });
+            }
+
+            self.callbacks.on_part(self.callbacks.ctx, .{
+                .finish = .{
+                    .finish_reason = self.finish_reason,
+                    .usage = self.usage,
+                },
+            });
+
+            self.callbacks.on_complete(self.callbacks.ctx, null);
+        }
+    };
 
     /// Stream content
     pub fn doStream(
@@ -112,12 +327,12 @@ pub const MistralChatLanguageModel = struct {
     ) void {
         // Use arena for request processing
         var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
         const request_allocator = arena.allocator();
 
         // Build the request body with streaming enabled
         var request_body = self.buildRequestBody(request_allocator, call_options) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
             return;
         };
 
@@ -125,6 +340,7 @@ pub const MistralChatLanguageModel = struct {
         if (request_body == .object) {
             request_body.object.put("stream", .{ .bool = true }) catch |err| {
                 callbacks.on_error(callbacks.ctx, err);
+                arena.deinit();
                 return;
             };
         }
@@ -135,24 +351,96 @@ pub const MistralChatLanguageModel = struct {
             self.config.base_url,
         ) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
             return;
         };
 
-        _ = url;
-        _ = result_allocator;
+        // Get headers
+        var headers = std.StringHashMap([]const u8).init(request_allocator);
+        if (self.config.headers_fn) |headers_fn| {
+            headers = headers_fn(&self.config, request_allocator) catch |err| {
+                callbacks.on_error(callbacks.ctx, err);
+                arena.deinit();
+                return;
+            };
+        }
 
-        // For now, emit completion
-        callbacks.on_part(callbacks.ctx, .{
-            .finish = .{
-                .finish_reason = .stop,
-                .usage = .{
-                    .prompt_tokens = 0,
-                    .completion_tokens = 0,
+        headers.put("Content-Type", "application/json") catch |err| {
+            callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
+            return;
+        };
+
+        // Serialize request body
+        var body_buffer = std.array_list.Managed(u8).init(request_allocator);
+        std.json.stringify(request_body, .{}, body_buffer.writer()) catch |err| {
+            callbacks.on_error(callbacks.ctx, err);
+            arena.deinit();
+            return;
+        };
+
+        // Get HTTP client
+        const http_client = self.config.http_client orelse {
+            // No HTTP client - emit empty completion
+            callbacks.on_part(callbacks.ctx, .{
+                .finish = .{
+                    .finish_reason = .stop,
+                    .usage = lm.LanguageModelV3Usage.init(),
                 },
-            },
-        });
+            });
+            callbacks.on_complete(callbacks.ctx, null);
+            arena.deinit();
+            return;
+        };
 
-        callbacks.on_complete(callbacks.ctx, null);
+        // Convert headers to slice
+        var header_list = std.array_list.Managed(provider_utils.HttpClient.Header).init(request_allocator);
+        var header_iter = headers.iterator();
+        while (header_iter.next()) |entry| {
+            header_list.append(.{
+                .name = entry.key_ptr.*,
+                .value = entry.value_ptr.*,
+            }) catch |err| {
+                callbacks.on_error(callbacks.ctx, err);
+                arena.deinit();
+                return;
+            };
+        }
+
+        // Create stream state
+        var stream_state = StreamState.init(callbacks, result_allocator, request_allocator);
+
+        // Make streaming HTTP request
+        http_client.requestStreaming(
+            .{
+                .method = .POST,
+                .url = url,
+                .headers = header_list.items,
+                .body = body_buffer.items,
+            },
+            request_allocator,
+            .{
+                .on_chunk = struct {
+                    fn onChunk(ctx: ?*anyopaque, chunk: []const u8) void {
+                        const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                        state.processChunk(chunk);
+                    }
+                }.onChunk,
+                .on_complete = struct {
+                    fn onComplete(ctx: ?*anyopaque) void {
+                        const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                        state.finish();
+                    }
+                }.onComplete,
+                .on_error = struct {
+                    fn onError(ctx: ?*anyopaque, _: provider_utils.HttpClient.HttpError) void {
+                        const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                        state.callbacks.on_error(state.callbacks.ctx, error.HttpRequestFailed);
+                    }
+                }.onError,
+                .ctx = &stream_state,
+            },
+        );
     }
 
     /// Build the request body for the chat completions API
