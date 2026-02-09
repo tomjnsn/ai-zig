@@ -159,21 +159,62 @@ pub fn generateImage(
     allocator: std.mem.Allocator,
     options: GenerateImageOptions,
 ) GenerateImageError!GenerateImageResult {
-    _ = allocator;
-
     // Validate input
     if (options.prompt.len == 0) {
         return GenerateImageError.InvalidPrompt;
     }
 
-    // TODO: Call model.doGenerate
-    // For now, return a placeholder result
+    // Build call options for the provider
+    const call_options = provider_types.ImageModelV3CallOptions{
+        .prompt = options.prompt,
+        .n = options.n,
+        .seed = if (options.seed) |s| @as(i64, @intCast(s)) else null,
+    };
+
+    // Call model.doGenerate
+    const CallbackCtx = struct { result: ?ImageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+    const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
+
+    options.model.doGenerate(
+        call_options,
+        allocator,
+        struct {
+            fn onResult(ptr: ?*anyopaque, result: ImageModelV3.GenerateResult) void {
+                const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
+                ctx.result = result;
+            }
+        }.onResult,
+        ctx_ptr,
+    );
+
+    const gen_success = switch (cb_ctx.result orelse return GenerateImageError.ModelError) {
+        .success => |s| s,
+        .failure => return GenerateImageError.ModelError,
+    };
+
+    // Convert provider images to ai-level GeneratedImage
+    const image_data = switch (gen_success.images) {
+        .base64 => |base64_images| base64_images,
+        .binary => |_| return GenerateImageError.ModelError, // TODO: handle binary
+    };
+
+    const images = allocator.alloc(GeneratedImage, image_data.len) catch return GenerateImageError.OutOfMemory;
+    for (image_data, 0..) |b64, i| {
+        images[i] = .{
+            .base64 = b64,
+            .mime_type = "image/png",
+        };
+    }
 
     return GenerateImageResult{
-        .images = &[_]GeneratedImage{},
-        .usage = .{ .images = 0 },
+        .images = images,
+        .usage = .{
+            .images = @as(u32, @intCast(image_data.len)),
+        },
         .response = .{
-            .model_id = "placeholder",
+            .model_id = gen_success.response.model_id,
+            .timestamp = gen_success.response.timestamp,
         },
         .warnings = null,
     };
@@ -257,8 +298,9 @@ test "generateImage returns image from mock provider" {
         .model = &model,
         .prompt = "A beautiful sunset",
     });
+    defer std.testing.allocator.free(result.images);
 
-    // Should have 1 image (currently returns empty - this test should FAIL)
+    // Should have 1 image
     try std.testing.expectEqual(@as(usize, 1), result.images.len);
 
     // Should have base64 data
