@@ -98,6 +98,11 @@ pub const generatePrefixedId = generate_id.generatePrefixedId;
 pub const generateUuidLike = generate_id.generateUuidLike;
 pub const hasPrefix = generate_id.hasPrefix;
 
+// Security utilities (re-exported from provider)
+pub const security = @import("provider").security;
+pub const redactApiKey = security.redactApiKey;
+pub const containsApiKey = security.containsApiKey;
+
 // API key and settings loading
 pub const load_api_key = @import("load-api-key.zig");
 

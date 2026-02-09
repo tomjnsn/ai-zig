@@ -77,6 +77,11 @@ pub const TranscriptionSegment = transcription_model.TranscriptionSegment;
 pub const implementTranscriptionModel = transcription_model.implementTranscriptionModel;
 pub const asTranscriptionModel = transcription_model.asTranscriptionModel;
 
+// Security
+pub const security = @import("security.zig");
+pub const redactApiKey = security.redactApiKey;
+pub const containsApiKey = security.containsApiKey;
+
 // Provider
 pub const provider = @import("provider/v3/index.zig");
 pub const ProviderV3 = provider.ProviderV3;

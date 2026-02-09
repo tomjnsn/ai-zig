@@ -159,3 +159,23 @@ test "ApiCallError custom retryable override" {
 
     try std.testing.expect(err.isRetryable());
 }
+
+test "format redacts API keys in response body" {
+    const allocator = std.testing.allocator;
+    const err = ApiCallError.init(.{
+        .message = "Auth failed",
+        .url = "https://api.example.com/v1/chat",
+        .status_code = 401,
+        .response_body = "Invalid key: sk-secret123abc",
+    });
+
+    const formatted = try err.format(allocator);
+    defer allocator.free(formatted);
+
+    // Should contain the error info
+    try std.testing.expect(std.mem.indexOf(u8, formatted, "Auth failed") != null);
+    // Should NOT contain the raw API key
+    try std.testing.expect(std.mem.indexOf(u8, formatted, "sk-secret123abc") == null);
+    // Should contain redaction marker
+    try std.testing.expect(std.mem.indexOf(u8, formatted, "[REDACTED]") != null);
+}
