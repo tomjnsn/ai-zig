@@ -231,24 +231,26 @@ fn buildDefaultBaseUrl(allocator: std.mem.Allocator, project: []const u8, locati
 
 /// Headers function for Google AI config.
 /// Caller owns the returned HashMap and must call deinit() when done.
-fn getHeadersFn(config: *const google_config.GoogleGenerativeAIConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const google_config.GoogleGenerativeAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
     // Add content-type
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     return headers;
 }
 
 /// Headers function for Vertex config.
 /// Caller owns the returned HashMap and must call deinit() when done.
-fn getVertexHeadersFn(config: *const config_mod.GoogleVertexConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getVertexHeadersFn(config: *const config_mod.GoogleVertexConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
     // Add content-type
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     return headers;
 }

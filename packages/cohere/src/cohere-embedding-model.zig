@@ -136,7 +136,10 @@ pub const CohereEmbeddingModel = struct {
 
         body.put("embedding_types", .{ .array = blk: {
             var arr = std.json.Array.init(request_allocator);
-            arr.append(.{ .string = "float" }) catch {};
+            arr.append(.{ .string = "float" }) catch |err| {
+                callback(null, err, callback_context);
+                return;
+            };
             break :blk arr;
         } }) catch |err| {
             callback(null, err, callback_context);

@@ -124,19 +124,20 @@ fn getApiKeyFromEnv() ?[]const u8 {
 }
 
 /// Caller owns the returned HashMap and must call deinit() when done.
-fn getHeadersFn(config: *const config_mod.DeepSeekConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const config_mod.DeepSeekConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
+    errdefer headers.deinit();
 
-    headers.put("Content-Type", "application/json") catch {};
+    try headers.put("Content-Type", "application/json");
 
     if (getApiKeyFromEnv()) |api_key| {
-        const auth_header = std.fmt.allocPrint(
+        const auth_header = try std.fmt.allocPrint(
             allocator,
             "Bearer {s}",
             .{api_key},
-        ) catch return headers;
-        headers.put("Authorization", auth_header) catch {};
+        );
+        try headers.put("Authorization", auth_header);
     }
 
     return headers;

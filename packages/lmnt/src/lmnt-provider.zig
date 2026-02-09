@@ -167,13 +167,15 @@ fn getApiKeyFromEnv() ?[]const u8 {
 }
 
 /// Get headers for API requests. Caller owns the returned HashMap.
-pub fn getHeaders(allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+pub fn getHeaders(allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     var headers = std.StringHashMap([]const u8).init(allocator);
-    headers.put("Content-Type", "application/json") catch {};
+    errdefer headers.deinit();
+
+    try headers.put("Content-Type", "application/json");
 
     if (getApiKeyFromEnv()) |api_key| {
-        const auth_header = std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key}) catch return headers;
-        headers.put("X-API-Key", auth_header) catch {};
+        const auth_header = try std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key});
+        try headers.put("X-API-Key", auth_header);
     }
 
     return headers;

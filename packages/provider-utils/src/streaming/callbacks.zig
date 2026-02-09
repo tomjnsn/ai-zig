@@ -357,7 +357,7 @@ test "StreamCallbacks emit fail complete" {
         .on_item = struct {
             fn handler(context: ?*anyopaque, item: i32) void {
                 const c: *TestContext = @ptrCast(@alignCast(context));
-                c.items.append(item) catch {};
+                c.items.append(item) catch @panic("OOM in test");
             }
         }.handler,
         .on_error = struct {

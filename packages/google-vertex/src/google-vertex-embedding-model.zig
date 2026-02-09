@@ -156,11 +156,18 @@ pub const GoogleVertexEmbeddingModel = struct {
         }
 
         // Get headers
-        var headers = std.StringHashMap([]const u8).init(request_allocator);
-        if (self.config.headers_fn) |headers_fn| {
-            headers = headers_fn(&self.config, request_allocator);
-        }
-        headers.put("Content-Type", "application/json") catch {};
+        var headers = if (self.config.headers_fn) |headers_fn|
+            headers_fn(&self.config, request_allocator) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            }
+        else
+            std.StringHashMap([]const u8).init(request_allocator);
+
+        headers.put("Content-Type", "application/json") catch |err| {
+            callback(callback_context, .{ .failure = err });
+            return;
+        };
 
         // Serialize request body
         var body_buffer = std.ArrayList(u8).init(request_allocator);
@@ -182,7 +189,10 @@ pub const GoogleVertexEmbeddingModel = struct {
             header_list.append(.{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
-            }) catch {};
+            }) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
         }
 
         // Create context for callback
@@ -242,8 +252,14 @@ pub const GoogleVertexEmbeddingModel = struct {
             for (predictions) |pred| {
                 if (pred.embeddings) |emb| {
                     if (emb.values) |emb_values| {
-                        const values_copy = result_allocator.dupe(f32, emb_values) catch continue;
-                        embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch {};
+                        const values_copy = result_allocator.dupe(f32, emb_values) catch |err| {
+                            callback(callback_context, .{ .failure = err });
+                            return;
+                        };
+                        embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch |err| {
+                            callback(callback_context, .{ .failure = err });
+                            return;
+                        };
 
                         if (emb.statistics) |stats| {
                             if (stats.token_count) |tc| {

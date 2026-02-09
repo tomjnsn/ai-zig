@@ -734,7 +734,10 @@ test "SimpleJsonEventStreamParser basic" {
         .on_event = struct {
             fn handler(ctx: ?*anyopaque, data: json_value.JsonValue) void {
                 const self: *TestContext = @ptrCast(@alignCast(ctx));
-                self.events.append(data) catch {};
+                self.events.append(data) catch {
+                    var mutable_data = data;
+                    mutable_data.deinit(self.allocator);
+                };
             }
         }.handler,
         .on_error = struct {

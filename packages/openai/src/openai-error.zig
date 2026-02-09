@@ -158,10 +158,10 @@ pub fn handleErrorResponse(
     body: ?json_value.JsonValue,
     allocator: std.mem.Allocator,
 ) OpenAIError {
-    // Try to parse error data if body is available
-    if (body) |b| {
-        _ = OpenAIErrorData.fromJson(b, allocator) catch {};
-    }
+    // Body is available for future use (e.g., enriching error messages with
+    // parsed OpenAIErrorData), but currently we only map status codes.
+    _ = body;
+    _ = allocator;
 
     // Map status codes to errors
     return switch (status_code) {

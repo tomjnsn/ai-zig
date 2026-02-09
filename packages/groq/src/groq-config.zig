@@ -11,7 +11,7 @@ pub const GroqConfig = struct {
     base_url: []const u8 = "https://api.groq.com/openai/v1",
 
     /// Function to get headers
-    headers_fn: ?*const fn (*const GroqConfig, std.mem.Allocator) std.StringHashMap([]const u8) = null,
+    headers_fn: ?*const fn (*const GroqConfig, std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) = null,
 
     /// HTTP client (optional)
     http_client: ?HttpClient = null,
@@ -62,7 +62,7 @@ test "GroqConfig default values" {
 
 test "GroqConfig custom values" {
     const test_headers_fn = struct {
-        fn getHeaders(_: *const GroqConfig, alloc: std.mem.Allocator) std.StringHashMap([]const u8) {
+        fn getHeaders(_: *const GroqConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
             return std.StringHashMap([]const u8).init(alloc);
         }
     }.getHeaders;

@@ -69,7 +69,10 @@ pub const MistralChatLanguageModel = struct {
         // Get headers
         var headers = std.StringHashMap([]const u8).init(request_allocator);
         if (self.config.headers_fn) |headers_fn| {
-            headers = headers_fn(&self.config, request_allocator);
+            headers = headers_fn(&self.config, request_allocator) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
         }
 
         // Serialize request body

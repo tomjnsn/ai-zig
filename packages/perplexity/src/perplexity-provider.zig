@@ -96,18 +96,19 @@ fn getApiKeyFromEnv() ?[]const u8 {
 }
 
 /// Caller owns the returned HashMap and must call deinit() when done.
-fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) std.StringHashMap([]const u8) {
+fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
     _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
-    headers.put("Content-Type", "application/json") catch {};
+    errdefer headers.deinit();
+    try headers.put("Content-Type", "application/json");
 
     if (getApiKeyFromEnv()) |api_key| {
-        const auth_header = std.fmt.allocPrint(
+        const auth_header = try std.fmt.allocPrint(
             allocator,
             "Bearer {s}",
             .{api_key},
-        ) catch return headers;
-        headers.put("Authorization", auth_header) catch {};
+        );
+        try headers.put("Authorization", auth_header);
     }
 
     return headers;
@@ -346,7 +347,7 @@ test "getHeadersFn creates headers with content type" {
         .http_client = null,
     };
 
-    var headers = getHeadersFn(&config, std.testing.allocator);
+    var headers = try getHeadersFn(&config, std.testing.allocator);
     defer headers.deinit();
 
     // Content-Type header should always be present
