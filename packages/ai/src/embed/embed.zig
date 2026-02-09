@@ -362,3 +362,94 @@ test "embed returns embeddings from mock provider" {
     // Should have model ID from provider
     try std.testing.expectEqualStrings("mock-embedding", result.response.model_id);
 }
+
+test "embedMany batches requests per provider limits" {
+    const MockBatchEmbeddingModel = struct {
+        const Self = @This();
+
+        call_count: u32 = 0,
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-batch";
+        }
+
+        pub fn getMaxEmbeddingsPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 2); // Max 2 per call to force batching with 3 values
+        }
+
+        pub fn getSupportsParallelCalls(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, bool) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, false);
+        }
+
+        pub fn doEmbed(
+            self: *Self,
+            options: provider_types.EmbeddingModelCallOptions,
+            alloc: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, EmbeddingModelV3.EmbedResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            self.call_count += 1;
+
+            // Return one embedding per input value
+            const embeddings = alloc.alloc(provider_types.EmbeddingModelV3Embedding, options.values.len) catch {
+                callback(ctx, .{ .failure = error.OutOfMemory });
+                return;
+            };
+            for (0..options.values.len) |i| {
+                const vals = alloc.alloc(f32, 3) catch {
+                    callback(ctx, .{ .failure = error.OutOfMemory });
+                    return;
+                };
+                // Each embedding: [call_count * 0.1, call_count * 0.2, call_count * 0.3] offset by index
+                const base: f32 = @floatFromInt(self.call_count);
+                const idx: f32 = @floatFromInt(i);
+                vals[0] = base * 0.1 + idx * 0.01;
+                vals[1] = base * 0.2 + idx * 0.01;
+                vals[2] = base * 0.3 + idx * 0.01;
+                embeddings[i] = vals;
+            }
+
+            callback(ctx, .{ .success = .{
+                .embeddings = embeddings,
+                .usage = .{ .tokens = @as(u64, options.values.len) * 3 },
+            } });
+        }
+    };
+
+    var mock = MockBatchEmbeddingModel{};
+    var model = provider_types.asEmbeddingModel(MockBatchEmbeddingModel, &mock);
+
+    const values = [_][]const u8{ "hello", "world", "test" };
+    const result = try embedMany(std.testing.allocator, .{
+        .model = &model,
+        .values = &values,
+    });
+    // Free all allocated embedding values
+    defer {
+        for (result.embeddings) |emb| {
+            std.testing.allocator.free(emb.values);
+        }
+        std.testing.allocator.free(result.embeddings);
+    }
+
+    // Should have 3 embeddings (currently returns empty - this test should FAIL)
+    try std.testing.expectEqual(@as(usize, 3), result.embeddings.len);
+
+    // With max 2 per call and 3 values, should require 2 calls
+    try std.testing.expectEqual(@as(u32, 2), mock.call_count);
+
+    // Should have model ID from provider
+    try std.testing.expectEqualStrings("mock-batch", result.response.model_id);
+}
