@@ -310,3 +310,21 @@ test "generateImage returns image from mock provider" {
     // Should have model ID from provider
     try std.testing.expectEqualStrings("mock-image", result.response.model_id);
 }
+
+test "GeneratedImage.getData decodes base64" {
+    const image = GeneratedImage{
+        .base64 = "SGVsbG8gV29ybGQ=", // "Hello World"
+    };
+
+    const data = try image.getData(std.testing.allocator);
+    defer std.testing.allocator.free(data);
+
+    try std.testing.expectEqualStrings("Hello World", data);
+}
+
+test "GeneratedImage.getData returns error for no data" {
+    const image = GeneratedImage{};
+
+    const result = image.getData(std.testing.allocator);
+    try std.testing.expectError(error.NoImageData, result);
+}
