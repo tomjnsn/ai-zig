@@ -141,24 +141,57 @@ pub fn generateSpeech(
     allocator: std.mem.Allocator,
     options: GenerateSpeechOptions,
 ) GenerateSpeechError!GenerateSpeechResult {
-    _ = allocator;
-
     // Validate input
     if (options.text.len == 0) {
         return GenerateSpeechError.InvalidText;
     }
 
-    // TODO: Call model.doGenerate
-    // For now, return a placeholder result
+    // Build call options for the provider
+    const call_options = provider_types.SpeechModelV3CallOptions{
+        .text = options.text,
+        .voice = options.voice,
+        .speed = if (options.voice_settings.speed) |s| @as(f32, @floatCast(s)) else null,
+    };
+
+    // Call model.doGenerate
+    const CallbackCtx = struct { result: ?SpeechModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+    const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
+
+    options.model.doGenerate(
+        call_options,
+        allocator,
+        struct {
+            fn onResult(ptr: ?*anyopaque, result: SpeechModelV3.GenerateResult) void {
+                const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
+                ctx.result = result;
+            }
+        }.onResult,
+        ctx_ptr,
+    );
+
+    const gen_success = switch (cb_ctx.result orelse return GenerateSpeechError.ModelError) {
+        .success => |s| s,
+        .failure => return GenerateSpeechError.ModelError,
+    };
+
+    // Convert provider audio to ai-level GeneratedAudio
+    const audio_data = switch (gen_success.audio) {
+        .binary => |data| data,
+        .base64 => |_| return GenerateSpeechError.ModelError, // TODO: decode base64
+    };
 
     return GenerateSpeechResult{
         .audio = .{
-            .data = &[_]u8{},
+            .data = audio_data,
             .format = options.format,
         },
-        .usage = .{},
+        .usage = .{
+            .characters = @as(u64, options.text.len),
+        },
         .response = .{
-            .model_id = "placeholder",
+            .model_id = gen_success.response.model_id,
+            .timestamp = gen_success.response.timestamp,
         },
         .warnings = null,
     };
