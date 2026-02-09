@@ -1,5 +1,6 @@
 const std = @import("std");
 const errors = @import("provider").errors;
+const url_validation = @import("url-validation.zig");
 
 /// Options for loading an API key
 pub const LoadApiKeyOptions = struct {
@@ -167,6 +168,9 @@ pub fn loadOpenAIStyleConfig(
         }),
     ) orelse default_base_url;
 
+    // Validate the base URL
+    try url_validation.validateUrl(loaded_base_url, false);
+
     return .{
         .api_key = loaded_key,
         .base_url = loaded_base_url,
@@ -315,4 +319,25 @@ test "withoutTrailingSlash single slash" {
         "",
         withoutTrailingSlash("/").?,
     );
+}
+
+test "loadOpenAIStyleConfig rejects invalid base URL" {
+    const result = loadOpenAIStyleConfig(
+        "test-api-key",
+        "ftp://invalid-scheme.example.com",
+        "TEST",
+        "https://default.example.com",
+    );
+    try std.testing.expectError(error.InvalidUrl, result);
+}
+
+test "loadOpenAIStyleConfig accepts valid https URL" {
+    const config = try loadOpenAIStyleConfig(
+        "test-api-key",
+        "https://custom.example.com/v1",
+        "TEST",
+        "https://default.example.com",
+    );
+    try std.testing.expectEqualStrings("https://custom.example.com/v1", config.base_url);
+    try std.testing.expectEqualStrings("test-api-key", config.api_key);
 }
