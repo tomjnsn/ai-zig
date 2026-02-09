@@ -280,23 +280,100 @@ pub fn generateText(
     // Multi-step loop
     var step_count: u32 = 0;
     while (step_count < options.max_steps) : (step_count += 1) {
-        // TODO: Call model.doGenerate with prepared prompt
-        // For now, create a placeholder response
+        // Convert messages to provider-level prompt
+        var prompt_msgs = std.array_list.Managed(provider_types.LanguageModelV3Message).init(arena_allocator);
+        for (messages.items) |msg| {
+            switch (msg.content) {
+                .text => |text| {
+                    switch (msg.role) {
+                        .system => {
+                            prompt_msgs.append(provider_types.language_model.systemMessage(text)) catch return GenerateTextError.OutOfMemory;
+                        },
+                        .user => {
+                            const m = provider_types.language_model.userTextMessage(arena_allocator, text) catch return GenerateTextError.OutOfMemory;
+                            prompt_msgs.append(m) catch return GenerateTextError.OutOfMemory;
+                        },
+                        .assistant => {
+                            const m = provider_types.language_model.assistantTextMessage(arena_allocator, text) catch return GenerateTextError.OutOfMemory;
+                            prompt_msgs.append(m) catch return GenerateTextError.OutOfMemory;
+                        },
+                        .tool => {},
+                    }
+                },
+                .parts => {},
+            }
+        }
+
+        // Build call options
+        const call_options = provider_types.LanguageModelV3CallOptions{
+            .prompt = prompt_msgs.items,
+            .max_output_tokens = options.settings.max_output_tokens,
+            .temperature = if (options.settings.temperature) |t| @as(f32, @floatCast(t)) else null,
+            .stop_sequences = options.settings.stop_sequences,
+            .top_p = if (options.settings.top_p) |p| @as(f32, @floatCast(p)) else null,
+            .top_k = options.settings.top_k,
+            .presence_penalty = if (options.settings.presence_penalty) |p| @as(f32, @floatCast(p)) else null,
+            .frequency_penalty = if (options.settings.frequency_penalty) |f| @as(f32, @floatCast(f)) else null,
+            .seed = if (options.settings.seed) |s| @as(i64, @intCast(s)) else null,
+        };
+
+        // Synchronous callback to capture result
+        const CallbackCtx = struct { result: ?LanguageModelV3.GenerateResult = null };
+        var cb_ctx = CallbackCtx{};
+
+        // Call model's doGenerate
+        const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
+        options.model.doGenerate(call_options, allocator, struct {
+            fn onResult(ptr: ?*anyopaque, result: LanguageModelV3.GenerateResult) void {
+                const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
+                ctx.result = result;
+            }
+        }.onResult, ctx_ptr);
+
+        // Handle result
+        const gen_success = switch (cb_ctx.result orelse return GenerateTextError.ModelError) {
+            .success => |s| s,
+            .failure => return GenerateTextError.ModelError,
+        };
+
+        // Extract text from content (first text part)
+        var generated_text: []const u8 = "";
+        for (gen_success.content) |content_item| {
+            switch (content_item) {
+                .text => |t| {
+                    generated_text = t.text;
+                    break;
+                },
+                else => {},
+            }
+        }
+
+        // Map finish reason
+        const finish_reason: FinishReason = switch (gen_success.finish_reason) {
+            .stop => .stop,
+            .length => .length,
+            .tool_calls => .tool_calls,
+            .content_filter => .content_filter,
+            .@"error" => .other,
+            .other => .other,
+            .unknown => .unknown,
+        };
 
         const step_result = StepResult{
             .content = &[_]ContentPart{},
-            .text = "",
-            .reasoning_text = null,
-            .finish_reason = .stop,
-            .usage = .{},
+            .text = generated_text,
+            .finish_reason = finish_reason,
+            .usage = .{
+                .input_tokens = gen_success.usage.input_tokens.total,
+                .output_tokens = gen_success.usage.output_tokens.total,
+            },
             .tool_calls = &[_]ToolCall{},
             .tool_results = &[_]ToolResult{},
             .response = .{
-                .id = "placeholder",
-                .model_id = "placeholder",
+                .id = if (gen_success.response) |r| r.metadata.id orelse "" else "",
+                .model_id = if (gen_success.response) |r| r.metadata.model_id orelse options.model.getModelId() else options.model.getModelId(),
                 .timestamp = std.time.timestamp(),
             },
-            .warnings = null,
         };
 
         total_usage = total_usage.add(step_result.usage);
