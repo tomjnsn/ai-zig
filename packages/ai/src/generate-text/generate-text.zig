@@ -506,3 +506,192 @@ test "LanguageModelUsage add" {
     try std.testing.expectEqual(@as(?u64, 300), total.input_tokens);
     try std.testing.expectEqual(@as(?u64, 150), total.output_tokens);
 }
+
+test "generateText multi-turn conversation" {
+    const MockMultiTurnModel = struct {
+        const Self = @This();
+
+        const response_content = [_]provider_types.LanguageModelV3Content{
+            .{ .text = .{ .text = "Paris is the capital of France." } },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-multiturn";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            call_options: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            // Verify multi-turn prompt structure:
+            // system + user + assistant + user = 4 messages
+            if (call_options.prompt.len < 4) {
+                callback(ctx, .{ .failure = error.InvalidPrompt });
+                return;
+            }
+            // Verify roles: system, user, assistant, user
+            if (call_options.prompt[0].role != .system or
+                call_options.prompt[1].role != .user or
+                call_options.prompt[2].role != .assistant or
+                call_options.prompt[3].role != .user)
+            {
+                callback(ctx, .{ .failure = error.InvalidPrompt });
+                return;
+            }
+            callback(ctx, .{ .success = .{
+                .content = &response_content,
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.initWithTotals(25, 10),
+            } });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockMultiTurnModel{};
+    var model = provider_types.asLanguageModel(MockMultiTurnModel, &mock);
+
+    const result = try generateText(std.testing.allocator, .{
+        .model = &model,
+        .system = "You are a geography expert.",
+        .messages = &[_]Message{
+            .{ .role = .user, .content = .{ .text = "What is the capital of France?" } },
+            .{ .role = .assistant, .content = .{ .text = "The capital of France is Paris." } },
+            .{ .role = .user, .content = .{ .text = "Tell me more about it." } },
+        },
+    });
+
+    try std.testing.expectEqualStrings("Paris is the capital of France.", result.text);
+    try std.testing.expectEqual(@as(?u64, 25), result.usage.input_tokens);
+}
+
+test "generateText returns error on model failure" {
+    const MockFailModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-fail";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockFailModel{};
+    var model = provider_types.asLanguageModel(MockFailModel, &mock);
+
+    const result = generateText(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "This should fail",
+    });
+
+    try std.testing.expectError(GenerateTextError.ModelError, result);
+}
+
+test "generateText returns error on empty prompt" {
+    const MockModel2 = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-model";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .content = &[_]provider_types.LanguageModelV3Content{},
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.init(),
+            } });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockModel2{};
+    var model = provider_types.asLanguageModel(MockModel2, &mock);
+
+    // Neither prompt nor messages provided
+    const result = generateText(std.testing.allocator, .{
+        .model = &model,
+    });
+
+    try std.testing.expectError(GenerateTextError.InvalidPrompt, result);
+}
