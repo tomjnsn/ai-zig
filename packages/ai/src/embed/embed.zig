@@ -176,21 +176,89 @@ pub fn embedMany(
     allocator: std.mem.Allocator,
     options: EmbedManyOptions,
 ) EmbedError!EmbedManyResult {
-    _ = allocator;
-
     // Validate input
     if (options.values.len == 0) {
         return EmbedError.InvalidInput;
     }
 
-    // TODO: Call model.doEmbed with batching
-    // For now, return a placeholder result
+    // Query max embeddings per call
+    const MaxCtx = struct { max: ?u32 = null };
+    var max_ctx = MaxCtx{};
+    options.model.getMaxEmbeddingsPerCall(
+        struct {
+            fn cb(ptr: ?*anyopaque, val: ?u32) void {
+                const ctx: *MaxCtx = @ptrCast(@alignCast(ptr.?));
+                ctx.max = val;
+            }
+        }.cb,
+        @ptrCast(&max_ctx),
+    );
+    const max_per_call: usize = if (max_ctx.max) |m| @as(usize, m) else options.values.len;
+
+    // Process in batches
+    var all_embeddings = std.array_list.Managed(Embedding).init(allocator);
+    var total_tokens: u64 = 0;
+
+    var offset: usize = 0;
+    while (offset < options.values.len) {
+        const end = @min(offset + max_per_call, options.values.len);
+        const batch = options.values[offset..end];
+
+        const call_options = provider_types.EmbeddingModelCallOptions{
+            .values = batch,
+        };
+
+        const CallbackCtx = struct { result: ?EmbeddingModelV3.EmbedResult = null };
+        var cb_ctx = CallbackCtx{};
+        const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
+
+        options.model.doEmbed(
+            call_options,
+            allocator,
+            struct {
+                fn onResult(ptr: ?*anyopaque, result: EmbeddingModelV3.EmbedResult) void {
+                    const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
+                    ctx.result = result;
+                }
+            }.onResult,
+            ctx_ptr,
+        );
+
+        const embed_success = switch (cb_ctx.result orelse return EmbedError.ModelError) {
+            .success => |s| s,
+            .failure => return EmbedError.ModelError,
+        };
+
+        // Convert f32 embeddings to f64 and add to results
+        for (embed_success.embeddings) |f32_values| {
+            const f64_values = allocator.alloc(f64, f32_values.len) catch return EmbedError.OutOfMemory;
+            for (f32_values, 0..) |v, i| {
+                f64_values[i] = @as(f64, @floatCast(v));
+            }
+            // Free the provider-allocated f32 values
+            allocator.free(f32_values);
+            all_embeddings.append(.{
+                .values = f64_values,
+                .index = all_embeddings.items.len,
+            }) catch return EmbedError.OutOfMemory;
+        }
+        // Free the provider-allocated embeddings slice
+        allocator.free(embed_success.embeddings);
+
+        if (embed_success.usage) |u| {
+            total_tokens += u.tokens;
+        }
+
+        offset = end;
+    }
 
     return EmbedManyResult{
-        .embeddings = &[_]Embedding{},
-        .usage = .{},
+        .embeddings = all_embeddings.toOwnedSlice() catch return EmbedError.OutOfMemory,
+        .usage = .{
+            .tokens = if (total_tokens > 0) total_tokens else null,
+        },
         .response = .{
-            .model_id = "placeholder",
+            .model_id = options.model.getModelId(),
         },
         .warnings = null,
     };
