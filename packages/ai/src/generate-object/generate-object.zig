@@ -228,3 +228,69 @@ test "parseJsonOutput simple object" {
 
     try std.testing.expect(parsed.value == .object);
 }
+
+test "generateObject returns valid JSON object from mock model" {
+    const MockModel = struct {
+        const Self = @This();
+
+        const mock_content = [_]provider_types.LanguageModelV3Content{
+            .{ .text = .{ .text = "{\"name\":\"Alice\",\"age\":30}" } },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-json";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .content = &mock_content,
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.initWithTotals(15, 25),
+            } });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockModel{};
+    var model = provider_types.asLanguageModel(MockModel, &mock);
+
+    const result = try generateObject(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "Generate a person",
+        .schema = .{
+            .json_schema = std.json.Value{ .object = std.json.ObjectMap.init(std.testing.allocator) },
+        },
+    });
+
+    // Should have parsed JSON object (currently returns empty object - test should FAIL
+    // because raw_text should come from model, not be hardcoded "{}"))
+    try std.testing.expectEqualStrings("{\"name\":\"Alice\",\"age\":30}", result.raw_text);
+    try std.testing.expect(result.object == .object);
+}
