@@ -141,6 +141,12 @@ pub const GenerateImageOptions = struct {
 
     /// Provider-specific options
     provider_options: ?std.json.Value = null,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Error types for image generation
@@ -159,6 +165,11 @@ pub fn generateImage(
     allocator: std.mem.Allocator,
     options: GenerateImageOptions,
 ) GenerateImageError!GenerateImageResult {
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return GenerateImageError.Cancelled;
+    }
+
     // Validate input
     if (options.prompt.len == 0) {
         return GenerateImageError.InvalidPrompt;

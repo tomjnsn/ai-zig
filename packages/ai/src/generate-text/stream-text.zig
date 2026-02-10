@@ -135,6 +135,12 @@ pub const StreamTextOptions = struct {
 
     /// Stream callbacks
     callbacks: StreamCallbacks,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Result handle for streaming text generation
@@ -203,6 +209,25 @@ pub const StreamTextResult = struct {
         return self.reasoning_text.items;
     }
 
+    /// Check if streaming completed normally
+    pub fn isStreamComplete(self: *const StreamTextResult) bool {
+        if (self.finish_reason) |reason| {
+            return reason == .stop or reason == .tool_calls;
+        }
+        return false;
+    }
+
+    /// Get total token count (input + output)
+    pub fn totalTokens(self: *const StreamTextResult) u64 {
+        return (self.total_usage.input_tokens orelse 0) +
+            (self.total_usage.output_tokens orelse 0);
+    }
+
+    /// Check if there are any tool calls
+    pub fn hasToolCalls(self: *const StreamTextResult) bool {
+        return self.tool_calls.items.len > 0;
+    }
+
     /// Process a stream part (internal use)
     pub fn processPart(self: *StreamTextResult, part: StreamPart) !void {
         switch (part) {
@@ -256,6 +281,11 @@ pub fn streamText(
     }
     if (options.prompt != null and options.messages != null) {
         return StreamTextError.InvalidPrompt;
+    }
+
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return StreamTextError.Cancelled;
     }
 
     // Create result handle

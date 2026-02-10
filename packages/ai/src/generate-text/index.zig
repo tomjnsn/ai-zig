@@ -49,6 +49,11 @@ pub const StreamError = stream_text_mod.StreamError;
 
 pub const toGenerateTextResult = stream_text_mod.toGenerateTextResult;
 
+// Builders
+pub const builder_mod = @import("builder.zig");
+pub const TextGenerationBuilder = builder_mod.TextGenerationBuilder;
+pub const StreamTextBuilder = builder_mod.StreamTextBuilder;
+
 test {
     @import("std").testing.refAllDecls(@This());
 }

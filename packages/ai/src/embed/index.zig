@@ -19,6 +19,10 @@ pub const Embedding = embed_mod.Embedding;
 pub const EmbeddingUsage = embed_mod.EmbeddingUsage;
 pub const EmbeddingResponseMetadata = embed_mod.EmbeddingResponseMetadata;
 
+// Builder
+pub const builder_mod = @import("builder.zig");
+pub const EmbedBuilder = builder_mod.EmbedBuilder;
+
 // Re-export similarity functions
 pub const cosineSimilarity = embed_mod.cosineSimilarity;
 pub const euclideanDistance = embed_mod.euclideanDistance;

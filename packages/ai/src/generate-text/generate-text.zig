@@ -129,6 +129,30 @@ pub const GenerateTextResult = struct {
     /// Warnings from the model
     warnings: ?[]const []const u8 = null,
 
+    /// Get the generated text, returning error if no content was generated
+    pub fn getText(self: *const GenerateTextResult) ![]const u8 {
+        if (self.text.len == 0 and self.finish_reason == .other) {
+            return error.NoContentGenerated;
+        }
+        return self.text;
+    }
+
+    /// Check if generation completed normally (stop or tool_calls)
+    pub fn isComplete(self: *const GenerateTextResult) bool {
+        return self.finish_reason == .stop or self.finish_reason == .tool_calls;
+    }
+
+    /// Get total token count (input + output)
+    pub fn totalTokens(self: *const GenerateTextResult) u64 {
+        return (self.usage.input_tokens orelse 0) +
+            (self.usage.output_tokens orelse 0);
+    }
+
+    /// Check if there are any tool calls
+    pub fn hasToolCalls(self: *const GenerateTextResult) bool {
+        return self.tool_calls.len > 0;
+    }
+
     /// Clean up resources
     pub fn deinit(self: *GenerateTextResult, allocator: std.mem.Allocator) void {
         _ = self;
@@ -222,6 +246,12 @@ pub const GenerateTextOptions = struct {
 
     /// Callback context
     callback_context: ?*anyopaque = null,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Error types for text generation
@@ -280,6 +310,10 @@ pub fn generateText(
     // Multi-step loop
     var step_count: u32 = 0;
     while (step_count < options.max_steps) : (step_count += 1) {
+        // Check request context for cancellation/timeout
+        if (options.request_context) |ctx| {
+            if (ctx.isDone()) return GenerateTextError.Cancelled;
+        }
         // Convert messages to provider-level prompt
         var prompt_msgs = std.array_list.Managed(provider_types.LanguageModelV3Message).init(arena_allocator);
         for (messages.items) |msg| {
@@ -757,4 +791,94 @@ test "generateText sequential requests don't leak memory" {
         });
         try std.testing.expectEqualStrings("Response", result.text);
     }
+}
+
+test "GenerateTextResult.getText returns text" {
+    const result = GenerateTextResult{
+        .text = "Hello world",
+        .content = &.{},
+        .tool_calls = &.{},
+        .tool_results = &.{},
+        .finish_reason = .stop,
+        .usage = .{ .input_tokens = 10, .output_tokens = 5 },
+        .total_usage = .{ .input_tokens = 10, .output_tokens = 5 },
+        .response = .{ .id = "1", .model_id = "test", .timestamp = 0 },
+        .steps = &.{},
+    };
+    try std.testing.expectEqualStrings("Hello world", try result.getText());
+}
+
+test "GenerateTextResult.isComplete" {
+    const complete = GenerateTextResult{
+        .text = "done",
+        .content = &.{},
+        .tool_calls = &.{},
+        .tool_results = &.{},
+        .finish_reason = .stop,
+        .usage = .{},
+        .total_usage = .{},
+        .response = .{ .id = "", .model_id = "", .timestamp = 0 },
+        .steps = &.{},
+    };
+    try std.testing.expect(complete.isComplete());
+
+    const incomplete = GenerateTextResult{
+        .text = "",
+        .content = &.{},
+        .tool_calls = &.{},
+        .tool_results = &.{},
+        .finish_reason = .length,
+        .usage = .{},
+        .total_usage = .{},
+        .response = .{ .id = "", .model_id = "", .timestamp = 0 },
+        .steps = &.{},
+    };
+    try std.testing.expect(!incomplete.isComplete());
+}
+
+test "GenerateTextResult.totalTokens" {
+    const result = GenerateTextResult{
+        .text = "",
+        .content = &.{},
+        .tool_calls = &.{},
+        .tool_results = &.{},
+        .finish_reason = .stop,
+        .usage = .{ .input_tokens = 100, .output_tokens = 50 },
+        .total_usage = .{},
+        .response = .{ .id = "", .model_id = "", .timestamp = 0 },
+        .steps = &.{},
+    };
+    try std.testing.expectEqual(@as(u64, 150), result.totalTokens());
+}
+
+test "GenerateTextResult.hasToolCalls" {
+    const no_tools = GenerateTextResult{
+        .text = "",
+        .content = &.{},
+        .tool_calls = &.{},
+        .tool_results = &.{},
+        .finish_reason = .stop,
+        .usage = .{},
+        .total_usage = .{},
+        .response = .{ .id = "", .model_id = "", .timestamp = 0 },
+        .steps = &.{},
+    };
+    try std.testing.expect(!no_tools.hasToolCalls());
+
+    const with_tools = GenerateTextResult{
+        .text = "",
+        .content = &.{},
+        .tool_calls = &[_]ToolCall{.{
+            .tool_call_id = "1",
+            .tool_name = "test",
+            .input = .{ .string = "{}" },
+        }},
+        .tool_results = &.{},
+        .finish_reason = .tool_calls,
+        .usage = .{},
+        .total_usage = .{},
+        .response = .{ .id = "", .model_id = "", .timestamp = 0 },
+        .steps = &.{},
+    };
+    try std.testing.expect(with_tools.hasToolCalls());
 }

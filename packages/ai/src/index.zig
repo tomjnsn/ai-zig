@@ -40,6 +40,8 @@ pub const ContentPart = generate_text.ContentPart;
 pub const Message = generate_text.Message;
 pub const MessageRole = generate_text.MessageRole;
 pub const CallSettings = generate_text.CallSettings;
+pub const TextGenerationBuilder = generate_text.TextGenerationBuilder;
+pub const StreamTextBuilder = generate_text.StreamTextBuilder;
 
 // Generate Object - Structured object generation
 pub const generate_object = @import("generate-object/index.zig");
@@ -61,6 +63,7 @@ pub const EmbedManyResult = embed_mod.EmbedManyResult;
 pub const EmbedOptions = embed_mod.EmbedOptions;
 pub const EmbedManyOptions = embed_mod.EmbedManyOptions;
 pub const Embedding = embed_mod.Embedding;
+pub const EmbedBuilder = embed_mod.EmbedBuilder;
 pub const cosineSimilarity = embed_mod.cosineSimilarity;
 pub const euclideanDistance = embed_mod.euclideanDistance;
 pub const dotProduct = embed_mod.dotProduct;
@@ -102,6 +105,14 @@ pub const DynamicTool = tool_mod.DynamicTool;
 pub const ToolExecutionContext = tool_mod.ToolExecutionContext;
 pub const ToolExecutionResult = tool_mod.ToolExecutionResult;
 pub const ApprovalRequirement = tool_mod.ApprovalRequirement;
+
+// Context - Request timeout and cancellation
+pub const context = @import("context.zig");
+pub const RequestContext = context.RequestContext;
+
+// Retry - Configurable retry policy with backoff
+pub const retry = @import("retry.zig");
+pub const RetryPolicy = retry.RetryPolicy;
 
 // Middleware - Request/response transformation
 pub const middleware = @import("middleware/index.zig");

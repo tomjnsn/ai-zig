@@ -39,6 +39,16 @@ pub const EmbedResult = struct {
     /// Warnings from the model
     warnings: ?[]const []const u8 = null,
 
+    /// Get the embedding vector
+    pub fn getEmbedding(self: *const EmbedResult) []const f64 {
+        return self.embedding.values;
+    }
+
+    /// Get the dimensionality of the embedding
+    pub fn dimension(self: *const EmbedResult) usize {
+        return self.embedding.values.len;
+    }
+
     pub fn deinit(self: *EmbedResult, allocator: std.mem.Allocator) void {
         _ = self;
         _ = allocator;
@@ -80,6 +90,12 @@ pub const EmbedOptions = struct {
 
     /// Additional headers
     headers: ?std.StringHashMap([]const u8) = null,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Options for embedMany
@@ -95,6 +111,12 @@ pub const EmbedManyOptions = struct {
 
     /// Additional headers
     headers: ?std.StringHashMap([]const u8) = null,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Error types for embedding
@@ -112,6 +134,11 @@ pub fn embed(
     allocator: std.mem.Allocator,
     options: EmbedOptions,
 ) EmbedError!EmbedResult {
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return EmbedError.Cancelled;
+    }
+
     // Validate input
     if (options.value.len == 0) {
         return EmbedError.InvalidInput;
@@ -176,6 +203,11 @@ pub fn embedMany(
     allocator: std.mem.Allocator,
     options: EmbedManyOptions,
 ) EmbedError!EmbedManyResult {
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return EmbedError.Cancelled;
+    }
+
     // Validate input
     if (options.values.len == 0) {
         return EmbedError.InvalidInput;

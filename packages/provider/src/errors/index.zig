@@ -12,6 +12,9 @@ pub const isRetryableStatusCode = ai_sdk_error.isRetryableStatusCode;
 pub const api_call_error = @import("api-call-error.zig");
 pub const ApiCallError = api_call_error.ApiCallError;
 
+pub const api_error_details = @import("api-error-details.zig");
+pub const ApiErrorDetails = api_error_details.ApiErrorDetails;
+
 pub const empty_response_body_error = @import("empty-response-body-error.zig");
 pub const EmptyResponseBodyError = empty_response_body_error.EmptyResponseBodyError;
 

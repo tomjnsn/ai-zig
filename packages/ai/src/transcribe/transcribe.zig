@@ -129,6 +129,12 @@ pub const TranscribeOptions = struct {
 
     /// Provider-specific options
     provider_options: ?std.json.Value = null,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 pub const TimestampGranularity = enum {
@@ -160,6 +166,11 @@ pub fn transcribe(
     allocator: std.mem.Allocator,
     options: TranscribeOptions,
 ) TranscribeError!TranscribeResult {
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return TranscribeError.Cancelled;
+    }
+
     // Validate input and extract audio data
     const audio_data: provider_types.TranscriptionModelV3CallOptions.AudioData = switch (options.audio) {
         .data => |d| blk: {

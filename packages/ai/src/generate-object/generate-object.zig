@@ -91,6 +91,12 @@ pub const GenerateObjectOptions = struct {
 
     /// Schema description for tool mode
     schema_description: ?[]const u8 = null,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Error types for object generation
@@ -110,6 +116,11 @@ pub fn generateObject(
     allocator: std.mem.Allocator,
     options: GenerateObjectOptions,
 ) GenerateObjectError!GenerateObjectResult {
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return GenerateObjectError.Cancelled;
+    }
+
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();

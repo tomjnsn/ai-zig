@@ -90,6 +90,12 @@ pub const StreamObjectOptions = struct {
 
     /// Stream callbacks
     callbacks: ObjectStreamCallbacks,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Result handle for streaming object generation
@@ -186,6 +192,11 @@ pub fn streamObject(
     allocator: std.mem.Allocator,
     options: StreamObjectOptions,
 ) StreamObjectError!*StreamObjectResult {
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return StreamObjectError.Cancelled;
+    }
+
     // Validate options
     if (options.prompt == null and options.messages == null) {
         return StreamObjectError.InvalidPrompt;

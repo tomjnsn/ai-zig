@@ -123,6 +123,12 @@ pub const GenerateSpeechOptions = struct {
 
     /// Provider-specific options
     provider_options: ?std.json.Value = null,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Error types for speech generation
@@ -141,6 +147,11 @@ pub fn generateSpeech(
     allocator: std.mem.Allocator,
     options: GenerateSpeechOptions,
 ) GenerateSpeechError!GenerateSpeechResult {
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return GenerateSpeechError.Cancelled;
+    }
+
     // Validate input
     if (options.text.len == 0) {
         return GenerateSpeechError.InvalidText;
@@ -234,6 +245,12 @@ pub const StreamSpeechOptions = struct {
 
     /// Stream callbacks
     callbacks: SpeechStreamCallbacks,
+
+    /// Request context for timeout/cancellation
+    request_context: ?*const @import("../context.zig").RequestContext = null,
+
+    /// Retry policy for automatic retries
+    retry_policy: ?@import("../retry.zig").RetryPolicy = null,
 };
 
 /// Stream speech generation using a speech model
@@ -242,6 +259,11 @@ pub fn streamSpeech(
     options: StreamSpeechOptions,
 ) GenerateSpeechError!void {
     _ = allocator;
+
+    // Check request context for cancellation/timeout
+    if (options.request_context) |ctx| {
+        if (ctx.isDone()) return GenerateSpeechError.Cancelled;
+    }
 
     // Validate input
     if (options.text.len == 0) {
