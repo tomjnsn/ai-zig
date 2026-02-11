@@ -32,8 +32,8 @@ pub fn convertToAnthropicMessagesPrompt(
     allocator: std.mem.Allocator,
     options: ConvertOptions,
 ) !ConvertResult {
-    var messages = std.array_list.Managed(api.AnthropicMessagesRequest.RequestMessage).init(allocator);
-    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
+    var messages = std.ArrayList(api.AnthropicMessagesRequest.RequestMessage).empty;
+    var warnings = std.ArrayList(shared.SharedV3Warning).empty;
     var system_content: ?[]api.AnthropicMessagesRequest.SystemContent = null;
     var betas = std.StringHashMap(void).init(allocator);
 
@@ -50,12 +50,12 @@ pub fn convertToAnthropicMessagesPrompt(
             },
             .user => {
                 // Convert user message
-                var content_parts = std.array_list.Managed(api.AnthropicMessagesRequest.MessageContent).init(allocator);
+                var content_parts = std.ArrayList(api.AnthropicMessagesRequest.MessageContent).empty;
 
                 for (msg.content.user) |part| {
                     switch (part) {
                         .text => |t| {
-                            try content_parts.append(.{
+                            try content_parts.append(allocator, .{
                                 .text = .{
                                     .type = "text",
                                     .text = t.text,
@@ -71,7 +71,7 @@ pub fn convertToAnthropicMessagesPrompt(
                                     .binary => "", // Would need to encode
                                 };
 
-                                try content_parts.append(.{
+                                try content_parts.append(allocator, .{
                                     .image = .{
                                         .type = "image",
                                         .source = .{
@@ -91,19 +91,19 @@ pub fn convertToAnthropicMessagesPrompt(
                     }
                 }
 
-                try messages.append(.{
+                try messages.append(allocator, .{
                     .role = "user",
-                    .content = try content_parts.toOwnedSlice(),
+                    .content = try content_parts.toOwnedSlice(allocator),
                 });
             },
             .assistant => {
                 // Convert assistant message
-                var content_parts = std.array_list.Managed(api.AnthropicMessagesRequest.MessageContent).init(allocator);
+                var content_parts = std.ArrayList(api.AnthropicMessagesRequest.MessageContent).empty;
 
                 for (msg.content.assistant) |part| {
                     switch (part) {
                         .text => |t| {
-                            try content_parts.append(.{
+                            try content_parts.append(allocator, .{
                                 .text = .{
                                     .type = "text",
                                     .text = t.text,
@@ -111,7 +111,7 @@ pub fn convertToAnthropicMessagesPrompt(
                             });
                         },
                         .tool_call => |tc| {
-                            try content_parts.append(.{
+                            try content_parts.append(allocator, .{
                                 .tool_use = .{
                                     .type = "tool_use",
                                     .id = tc.tool_call_id,
@@ -123,7 +123,7 @@ pub fn convertToAnthropicMessagesPrompt(
                         .reasoning => |r| {
                             if (options.send_reasoning) {
                                 // Reasoning is sent as text with special handling
-                                try content_parts.append(.{
+                                try content_parts.append(allocator, .{
                                     .text = .{
                                         .type = "text",
                                         .text = r.text,
@@ -135,14 +135,14 @@ pub fn convertToAnthropicMessagesPrompt(
                     }
                 }
 
-                try messages.append(.{
+                try messages.append(allocator, .{
                     .role = "assistant",
-                    .content = try content_parts.toOwnedSlice(),
+                    .content = try content_parts.toOwnedSlice(allocator),
                 });
             },
             .tool => {
                 // Convert tool result message
-                var content_parts = std.array_list.Managed(api.AnthropicMessagesRequest.MessageContent).init(allocator);
+                var content_parts = std.ArrayList(api.AnthropicMessagesRequest.MessageContent).empty;
 
                 for (msg.content.tool) |part| {
                     const output_text = switch (part.output) {
@@ -154,7 +154,7 @@ pub fn convertToAnthropicMessagesPrompt(
                         .content => "Content output not yet supported",
                     };
 
-                    try content_parts.append(.{
+                    try content_parts.append(allocator, .{
                         .tool_result = .{
                             .type = "tool_result",
                             .tool_use_id = part.tool_call_id,
@@ -167,9 +167,9 @@ pub fn convertToAnthropicMessagesPrompt(
                     });
                 }
 
-                try messages.append(.{
+                try messages.append(allocator, .{
                     .role = "user",
-                    .content = try content_parts.toOwnedSlice(),
+                    .content = try content_parts.toOwnedSlice(allocator),
                 });
             },
         }
@@ -177,8 +177,8 @@ pub fn convertToAnthropicMessagesPrompt(
 
     return .{
         .system = system_content,
-        .messages = try messages.toOwnedSlice(),
-        .warnings = try warnings.toOwnedSlice(),
+        .messages = try messages.toOwnedSlice(allocator),
+        .warnings = try warnings.toOwnedSlice(allocator),
         .betas = betas,
     };
 }

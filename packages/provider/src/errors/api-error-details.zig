@@ -49,9 +49,9 @@ pub const ApiErrorDetails = struct {
 
     /// Format error details for display
     pub fn format(self: *const ApiErrorDetails, allocator: std.mem.Allocator) ![]const u8 {
-        var list = std.array_list.Managed(u8).init(allocator);
-        errdefer list.deinit();
-        const writer = list.writer();
+        var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
+        const writer = list.writer(allocator);
 
         try writer.print("[{s}] {d}: {s}", .{ self.provider, self.status_code, self.message });
 
@@ -67,7 +67,7 @@ pub const ApiErrorDetails = struct {
             try writer.print(" [retry_after: {d}s]", .{seconds});
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(allocator);
     }
 
     /// Parse a Retry-After header value (seconds or HTTP-date).

@@ -174,8 +174,8 @@ pub const GoogleVertexEmbeddingModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).init(request_allocator);
-        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer()) catch |err| {
+        var body_buffer = std.ArrayList(u8).empty;
+        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer(request_allocator)) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -187,10 +187,10 @@ pub const GoogleVertexEmbeddingModel = struct {
         };
 
         // Convert headers to slice
-        var header_list = std.ArrayList(provider_utils.HttpHeader).init(request_allocator);
+        var header_list = std.ArrayList(provider_utils.HttpHeader).empty;
         var header_iter = headers.iterator();
         while (header_iter.next()) |entry| {
-            header_list.append(.{
+            header_list.append(request_allocator, .{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
             }) catch |err| {
@@ -249,7 +249,7 @@ pub const GoogleVertexEmbeddingModel = struct {
         const response = parsed.value;
 
         // Extract embeddings from response
-        var embed_list = std.ArrayList(embedding.EmbeddingModelV3Embedding).init(result_allocator);
+        var embed_list = std.ArrayList(embedding.EmbeddingModelV3Embedding).empty;
         var total_tokens: u32 = 0;
 
         if (response.predictions) |predictions| {
@@ -260,7 +260,7 @@ pub const GoogleVertexEmbeddingModel = struct {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };
-                        embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch |err| {
+                        embed_list.append(result_allocator, .{ .embedding = .{ .float = values_copy } }) catch |err| {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };
@@ -276,7 +276,7 @@ pub const GoogleVertexEmbeddingModel = struct {
         }
 
         const result = embedding.EmbeddingModelV3.EmbedSuccess{
-            .embeddings = embed_list.toOwnedSlice() catch &[_]embedding.EmbeddingModelV3Embedding{},
+            .embeddings = embed_list.toOwnedSlice(result_allocator) catch &[_]embedding.EmbeddingModelV3Embedding{},
             .usage = .{
                 .tokens = total_tokens,
             },

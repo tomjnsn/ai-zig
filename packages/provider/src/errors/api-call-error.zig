@@ -100,9 +100,9 @@ pub const ApiCallError = struct {
 
     /// Format for display
     pub fn format(self: Self, allocator: std.mem.Allocator) ![]const u8 {
-        var list = std.array_list.Managed(u8).init(allocator);
-        errdefer list.deinit();
-        const writer = list.writer();
+        var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
+        const writer = list.writer(allocator);
 
         try writer.print("API call failed: {s}\n", .{self.info.message});
         try writer.print("URL: {s}\n", .{self.url()});
@@ -124,7 +124,7 @@ pub const ApiCallError = struct {
 
         try writer.print("Retryable: {}\n", .{self.isRetryable()});
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(allocator);
     }
 };
 

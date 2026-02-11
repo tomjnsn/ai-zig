@@ -251,11 +251,11 @@ pub fn parseSrt(
     allocator: std.mem.Allocator,
     srt_content: []const u8,
 ) ![]TranscriptionSegment {
-    var segments = std.array_list.Managed(TranscriptionSegment).init(allocator);
+    var segments = std.ArrayList(TranscriptionSegment).empty;
 
     var lines = std.mem.splitScalar(u8, srt_content, '\n');
     var current_segment: ?TranscriptionSegment = null;
-    var text_buffer = std.array_list.Managed(u8).init(allocator);
+    var text_buffer = std.ArrayList(u8).empty;
     var state: enum { index, timing, text } = .index;
 
     while (lines.next()) |line| {
@@ -264,8 +264,8 @@ pub fn parseSrt(
         if (trimmed.len == 0) {
             // Empty line - end of segment
             if (current_segment) |*seg| {
-                seg.text = try text_buffer.toOwnedSlice();
-                try segments.append(seg.*);
+                seg.text = try text_buffer.toOwnedSlice(allocator);
+                try segments.append(allocator, seg.*);
                 current_segment = null;
             }
             state = .index;
@@ -300,20 +300,20 @@ pub fn parseSrt(
             .text => {
                 // Accumulate text
                 if (text_buffer.items.len > 0) {
-                    try text_buffer.append(' ');
+                    try text_buffer.append(allocator, ' ');
                 }
-                try text_buffer.appendSlice(trimmed);
+                try text_buffer.appendSlice(allocator, trimmed);
             },
         }
     }
 
     // Handle last segment
     if (current_segment) |*seg| {
-        seg.text = try text_buffer.toOwnedSlice();
-        try segments.append(seg.*);
+        seg.text = try text_buffer.toOwnedSlice(allocator);
+        try segments.append(allocator, seg.*);
     }
 
-    return segments.toOwnedSlice();
+    return segments.toOwnedSlice(allocator);
 }
 
 test "TranscribeOptions default values" {

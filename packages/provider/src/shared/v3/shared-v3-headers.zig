@@ -63,15 +63,15 @@ pub fn mergeHeaders(
 
 /// Convert headers to a slice for HTTP client use
 pub fn headersToSlice(headers: SharedV3Headers, allocator: std.mem.Allocator) ![]const [2][]const u8 {
-    var list = std.array_list.Managed([2][]const u8).init(allocator);
-    errdefer list.deinit();
+    var list = std.ArrayList([2][]const u8).empty;
+    errdefer list.deinit(allocator);
 
     var iter = headers.iterator();
     while (iter.next()) |entry| {
-        try list.append(.{ entry.key_ptr.*, entry.value_ptr.* });
+        try list.append(allocator, .{ entry.key_ptr.*, entry.value_ptr.* });
     }
 
-    return list.toOwnedSlice();
+    return list.toOwnedSlice(allocator);
 }
 
 /// Check if a header exists

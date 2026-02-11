@@ -20,16 +20,16 @@ pub fn combineHeaders(
     }
 
     // Convert to slice
-    var list = std.array_list.Managed(http_client.HttpClient.Header).init(allocator);
+    var list = std.ArrayList(http_client.HttpClient.Header).empty;
     var iter = result.iterator();
     while (iter.next()) |entry| {
-        try list.append(.{
+        try list.append(allocator, .{
             .name = entry.key_ptr.*,
             .value = entry.value_ptr.*,
         });
     }
 
-    return list.toOwnedSlice();
+    return list.toOwnedSlice(allocator);
 }
 
 /// Combine headers from slices without allocation (returns iterator)

@@ -154,19 +154,19 @@ pub const LanguageModelStreamCallbacks = struct {
 
 /// Accumulator for building up streaming content
 pub const StreamAccumulator = struct {
-    text: std.array_list.Managed(u8),
-    tool_calls: std.array_list.Managed(AccumulatedToolCall),
+    text: std.ArrayList(u8),
+    tool_calls: std.ArrayList(AccumulatedToolCall),
     allocator: std.mem.Allocator,
 
     pub const AccumulatedToolCall = struct {
         id: []const u8,
         name: []const u8,
-        input: std.array_list.Managed(u8),
+        input: std.ArrayList(u8),
 
         pub fn deinit(self: *AccumulatedToolCall, allocator: std.mem.Allocator) void {
             allocator.free(self.id);
             allocator.free(self.name);
-            self.input.deinit();
+            self.input.deinit(allocator);
         }
     };
 
@@ -174,23 +174,23 @@ pub const StreamAccumulator = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .text = std.array_list.Managed(u8).init(allocator),
-            .tool_calls = std.array_list.Managed(AccumulatedToolCall).init(allocator),
+            .text = std.ArrayList(u8).empty,
+            .tool_calls = std.ArrayList(AccumulatedToolCall).empty,
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.text.deinit();
+        self.text.deinit(self.allocator);
         for (self.tool_calls.items) |*tc| {
             tc.deinit(self.allocator);
         }
-        self.tool_calls.deinit();
+        self.tool_calls.deinit(self.allocator);
     }
 
     /// Append text to the accumulator
     pub fn appendText(self: *Self, text: []const u8) !void {
-        try self.text.appendSlice(text);
+        try self.text.appendSlice(self.allocator, text);
     }
 
     /// Get the accumulated text
@@ -200,10 +200,10 @@ pub const StreamAccumulator = struct {
 
     /// Start a new tool call
     pub fn startToolCall(self: *Self, id: []const u8, name: []const u8) !void {
-        try self.tool_calls.append(.{
+        try self.tool_calls.append(self.allocator, .{
             .id = try self.allocator.dupe(u8, id),
             .name = try self.allocator.dupe(u8, name),
-            .input = std.array_list.Managed(u8).init(self.allocator),
+            .input = std.ArrayList(u8).empty,
         });
     }
 
@@ -211,7 +211,7 @@ pub const StreamAccumulator = struct {
     pub fn appendToolInput(self: *Self, id: []const u8, delta: []const u8) !void {
         for (self.tool_calls.items) |*tc| {
             if (std.mem.eql(u8, tc.id, id)) {
-                try tc.input.appendSlice(delta);
+                try tc.input.appendSlice(self.allocator, delta);
                 return;
             }
         }
@@ -335,29 +335,33 @@ test "CallbackBuilder basic" {
 }
 
 test "StreamCallbacks emit fail complete" {
-    var items = std.array_list.Managed(i32).init(std.testing.allocator);
-    defer items.deinit();
+    const allocator = std.testing.allocator;
+
+    var items = std.ArrayList(i32).empty;
+    defer items.deinit(allocator);
 
     var error_seen: ?anyerror = null;
     var complete_seen = false;
 
     const TestContext = struct {
-        items: *std.array_list.Managed(i32),
+        items: *std.ArrayList(i32),
         error_seen: *?anyerror,
         complete_seen: *bool,
+        alloc: std.mem.Allocator,
     };
 
     var ctx = TestContext{
         .items = &items,
         .error_seen = &error_seen,
         .complete_seen = &complete_seen,
+        .alloc = allocator,
     };
 
     const callbacks = StreamCallbacks(i32){
         .on_item = struct {
             fn handler(context: ?*anyopaque, item: i32) void {
                 const c: *TestContext = @ptrCast(@alignCast(context));
-                c.items.append(item) catch @panic("OOM in test");
+                c.items.append(c.alloc, item) catch @panic("OOM in test");
             }
         }.handler,
         .on_error = struct {

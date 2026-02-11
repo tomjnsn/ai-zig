@@ -15,16 +15,16 @@ pub fn redactApiKey(text: []const u8, allocator: std.mem.Allocator) ![]const u8 
     if (text.len == 0) return text;
     if (!containsApiKey(text)) return text;
 
-    var result = std.array_list.Managed(u8).init(allocator);
-    errdefer result.deinit();
+    var result = std.ArrayList(u8).empty;
+    errdefer result.deinit(allocator);
 
     var i: usize = 0;
     while (i < text.len) {
         if (findKeyStart(text, i)) |key_start| {
             // Append everything before the key
-            try result.appendSlice(text[i..key_start]);
+            try result.appendSlice(allocator, text[i..key_start]);
             // Append redaction marker
-            try result.appendSlice("[REDACTED]");
+            try result.appendSlice(allocator, "[REDACTED]");
             // Skip past the key (consume until whitespace, comma, quote, or end)
             var end = key_start;
             while (end < text.len and !isKeyTerminator(text[end])) {
@@ -33,12 +33,12 @@ pub fn redactApiKey(text: []const u8, allocator: std.mem.Allocator) ![]const u8 
             i = end;
         } else {
             // No more keys, append rest
-            try result.appendSlice(text[i..]);
+            try result.appendSlice(allocator, text[i..]);
             break;
         }
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 /// Checks if a string contains what appears to be an API key

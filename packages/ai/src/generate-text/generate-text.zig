@@ -282,29 +282,29 @@ pub fn generateText(
     }
 
     // Build initial prompt
-    var messages = std.array_list.Managed(Message).init(arena_allocator);
+    var messages = std.ArrayList(Message).empty;
 
     if (options.system) |sys| {
-        messages.append(.{
+        messages.append(arena_allocator, .{
             .role = .system,
             .content = .{ .text = sys },
         }) catch return GenerateTextError.OutOfMemory;
     }
 
     if (options.prompt) |p| {
-        messages.append(.{
+        messages.append(arena_allocator, .{
             .role = .user,
             .content = .{ .text = p },
         }) catch return GenerateTextError.OutOfMemory;
     } else if (options.messages) |msgs| {
         for (msgs) |msg| {
-            messages.append(msg) catch return GenerateTextError.OutOfMemory;
+            messages.append(arena_allocator, msg) catch return GenerateTextError.OutOfMemory;
         }
     }
 
     // Track steps - use caller's allocator since steps are returned to caller
-    var steps = std.array_list.Managed(StepResult).init(allocator);
-    errdefer steps.deinit();
+    var steps = std.ArrayList(StepResult).empty;
+    errdefer steps.deinit(allocator);
     var total_usage = LanguageModelUsage{};
 
     // Multi-step loop
@@ -315,21 +315,21 @@ pub fn generateText(
             if (ctx.isDone()) return GenerateTextError.Cancelled;
         }
         // Convert messages to provider-level prompt
-        var prompt_msgs = std.array_list.Managed(provider_types.LanguageModelV3Message).init(arena_allocator);
+        var prompt_msgs = std.ArrayList(provider_types.LanguageModelV3Message).empty;
         for (messages.items) |msg| {
             switch (msg.content) {
                 .text => |text| {
                     switch (msg.role) {
                         .system => {
-                            prompt_msgs.append(provider_types.language_model.systemMessage(text)) catch return GenerateTextError.OutOfMemory;
+                            prompt_msgs.append(arena_allocator, provider_types.language_model.systemMessage(text)) catch return GenerateTextError.OutOfMemory;
                         },
                         .user => {
                             const m = provider_types.language_model.userTextMessage(arena_allocator, text) catch return GenerateTextError.OutOfMemory;
-                            prompt_msgs.append(m) catch return GenerateTextError.OutOfMemory;
+                            prompt_msgs.append(arena_allocator, m) catch return GenerateTextError.OutOfMemory;
                         },
                         .assistant => {
                             const m = provider_types.language_model.assistantTextMessage(arena_allocator, text) catch return GenerateTextError.OutOfMemory;
-                            prompt_msgs.append(m) catch return GenerateTextError.OutOfMemory;
+                            prompt_msgs.append(arena_allocator, m) catch return GenerateTextError.OutOfMemory;
                         },
                         .tool => {},
                     }
@@ -411,7 +411,7 @@ pub fn generateText(
         };
 
         total_usage = total_usage.add(step_result.usage);
-        steps.append(step_result) catch return GenerateTextError.OutOfMemory;
+        steps.append(allocator, step_result) catch return GenerateTextError.OutOfMemory;
 
         // Call step callback if provided
         if (options.on_step_finish) |callback| {
@@ -451,7 +451,7 @@ pub fn generateText(
         .usage = final_step.usage,
         .total_usage = total_usage,
         .response = final_step.response,
-        .steps = steps.toOwnedSlice() catch return GenerateTextError.OutOfMemory,
+        .steps = steps.toOwnedSlice(allocator) catch return GenerateTextError.OutOfMemory,
         .warnings = final_step.warnings,
     };
 }

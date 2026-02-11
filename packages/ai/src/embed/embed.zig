@@ -228,7 +228,7 @@ pub fn embedMany(
     const max_per_call: usize = if (max_ctx.max) |m| @as(usize, m) else options.values.len;
 
     // Process in batches
-    var all_embeddings = std.array_list.Managed(Embedding).init(allocator);
+    var all_embeddings = std.ArrayList(Embedding).empty;
     var total_tokens: u64 = 0;
 
     var offset: usize = 0;
@@ -269,7 +269,7 @@ pub fn embedMany(
             }
             // Free the provider-allocated f32 values
             allocator.free(f32_values);
-            all_embeddings.append(.{
+            all_embeddings.append(allocator, .{
                 .values = f64_values,
                 .index = all_embeddings.items.len,
             }) catch return EmbedError.OutOfMemory;
@@ -285,7 +285,7 @@ pub fn embedMany(
     }
 
     return EmbedManyResult{
-        .embeddings = all_embeddings.toOwnedSlice() catch return EmbedError.OutOfMemory,
+        .embeddings = all_embeddings.toOwnedSlice(allocator) catch return EmbedError.OutOfMemory,
         .usage = .{
             .tokens = if (total_tokens > 0) total_tokens else null,
         },

@@ -56,9 +56,9 @@ pub const JsonParseError = struct {
 
     /// Format the error with context
     pub fn format(self: Self, allocator: std.mem.Allocator) ![]const u8 {
-        var list = std.array_list.Managed(u8).init(allocator);
-        errdefer list.deinit();
-        const writer = list.writer();
+        var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
+        const writer = list.writer(allocator);
 
         try writer.print("JSON parsing failed: {s}\n", .{self.message()});
 
@@ -72,7 +72,7 @@ pub const JsonParseError = struct {
             try writer.writeByte('\n');
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(allocator);
     }
 };
 

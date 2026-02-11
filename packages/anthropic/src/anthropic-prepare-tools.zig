@@ -35,7 +35,7 @@ pub fn prepareTools(
     allocator: std.mem.Allocator,
     options: PrepareToolsOptions,
 ) !PrepareToolsResult {
-    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
+    var warnings = std.ArrayList(shared.SharedV3Warning).empty;
     var betas = std.StringHashMap(void).init(allocator);
 
     // Convert tools
@@ -78,7 +78,7 @@ pub fn prepareTools(
                             try betas.put("computer-use-2024-10-22", {});
                         }
                     } else {
-                        try warnings.append(shared.SharedV3Warning.otherWarning(
+                        try warnings.append(allocator, shared.SharedV3Warning.otherWarning(
                             try std.fmt.allocPrint(
                                 allocator,
                                 "Provider tool '{s}' is not supported in Anthropic messages API",
@@ -129,7 +129,7 @@ pub fn prepareTools(
     return .{
         .tools = anthropic_tools,
         .tool_choice = anthropic_tool_choice,
-        .tool_warnings = try warnings.toOwnedSlice(),
+        .tool_warnings = try warnings.toOwnedSlice(allocator),
         .betas = betas,
     };
 }

@@ -5,8 +5,8 @@ const parse_json = @import("parse-json.zig");
 /// Server-Sent Events (SSE) parser for JSON event streams.
 /// Parses text/event-stream format and extracts JSON data payloads.
 pub const EventSourceParser = struct {
-    buffer: std.array_list.Managed(u8),
-    data_buffer: std.array_list.Managed(u8),
+    buffer: std.ArrayList(u8),
+    data_buffer: std.ArrayList(u8),
     event_type: ?[]const u8,
     has_data_field: bool,
     allocator: std.mem.Allocator,
@@ -23,8 +23,8 @@ pub const EventSourceParser = struct {
     /// Initialize a new event source parser with a maximum buffer size
     pub fn initWithMaxBuffer(allocator: std.mem.Allocator, max_buffer_size: ?usize) Self {
         return .{
-            .buffer = std.array_list.Managed(u8).init(allocator),
-            .data_buffer = std.array_list.Managed(u8).init(allocator),
+            .buffer = std.ArrayList(u8).empty,
+            .data_buffer = std.ArrayList(u8).empty,
             .event_type = null,
             .has_data_field = false,
             .allocator = allocator,
@@ -34,8 +34,8 @@ pub const EventSourceParser = struct {
 
     /// Deinitialize the parser
     pub fn deinit(self: *Self) void {
-        self.buffer.deinit();
-        self.data_buffer.deinit();
+        self.buffer.deinit(self.allocator);
+        self.data_buffer.deinit(self.allocator);
         if (self.event_type) |et| {
             self.allocator.free(et);
         }
@@ -71,7 +71,7 @@ pub const EventSourceParser = struct {
                 return error.BufferLimitExceeded;
             }
         }
-        try self.buffer.appendSlice(data);
+        try self.buffer.appendSlice(self.allocator, data);
 
         // Process complete lines
         while (self.findLineEnd()) |line_info| {
@@ -164,9 +164,9 @@ pub const EventSourceParser = struct {
             } else if (std.mem.eql(u8, field, "data")) {
                 self.has_data_field = true;
                 if (self.data_buffer.items.len > 0) {
-                    try self.data_buffer.append('\n');
+                    try self.data_buffer.append(self.allocator, '\n');
                 }
-                try self.data_buffer.appendSlice(value);
+                try self.data_buffer.appendSlice(self.allocator, value);
             }
             // Ignore 'id' and 'retry' fields for now
         }
@@ -320,20 +320,20 @@ test "EventSourceParser basic" {
     var parser = EventSourceParser.init(allocator);
     defer parser.deinit();
 
-    var events = std.array_list.Managed([]const u8).init(allocator);
+    var events = std.ArrayList([]const u8).empty;
     defer {
         for (events.items) |e| allocator.free(e);
-        events.deinit();
+        events.deinit(allocator);
     }
 
     const TestContext = struct {
-        events: *std.array_list.Managed([]const u8),
+        events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             const data = self.allocator.dupe(u8, event.data) catch return;
-            self.events.append(data) catch {
+            self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
             };
         }
@@ -374,20 +374,20 @@ test "EventSourceParser multiple events" {
     var parser = EventSourceParser.init(allocator);
     defer parser.deinit();
 
-    var events = std.array_list.Managed([]const u8).init(allocator);
+    var events = std.ArrayList([]const u8).empty;
     defer {
         for (events.items) |e| allocator.free(e);
-        events.deinit();
+        events.deinit(allocator);
     }
 
     const TestContext = struct {
-        events: *std.array_list.Managed([]const u8),
+        events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             const data = self.allocator.dupe(u8, event.data) catch return;
-            self.events.append(data) catch {
+            self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
             };
         }
@@ -422,20 +422,20 @@ test "EventSourceParser multiline data" {
     var parser = EventSourceParser.init(allocator);
     defer parser.deinit();
 
-    var events = std.array_list.Managed([]const u8).init(allocator);
+    var events = std.ArrayList([]const u8).empty;
     defer {
         for (events.items) |e| allocator.free(e);
-        events.deinit();
+        events.deinit(allocator);
     }
 
     const TestContext = struct {
-        events: *std.array_list.Managed([]const u8),
+        events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             const data = self.allocator.dupe(u8, event.data) catch return;
-            self.events.append(data) catch {
+            self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
             };
         }
@@ -466,21 +466,21 @@ test "EventSourceParser with event types" {
     var parser = EventSourceParser.init(allocator);
     defer parser.deinit();
 
-    var event_types = std.array_list.Managed([]const u8).init(allocator);
+    var event_types = std.ArrayList([]const u8).empty;
     defer {
         for (event_types.items) |e| allocator.free(e);
-        event_types.deinit();
+        event_types.deinit(allocator);
     }
 
     const TestContext = struct {
-        event_types: *std.array_list.Managed([]const u8),
+        event_types: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             if (event.event_type) |et| {
                 const event_type = self.allocator.dupe(u8, et) catch return;
-                self.event_types.append(event_type) catch {
+                self.event_types.append(self.allocator, event_type) catch {
                     self.allocator.free(event_type);
                 };
             }
@@ -541,20 +541,20 @@ test "EventSourceParser different line endings" {
     var parser = EventSourceParser.init(allocator);
     defer parser.deinit();
 
-    var events = std.array_list.Managed([]const u8).init(allocator);
+    var events = std.ArrayList([]const u8).empty;
     defer {
         for (events.items) |e| allocator.free(e);
-        events.deinit();
+        events.deinit(allocator);
     }
 
     const TestContext = struct {
-        events: *std.array_list.Managed([]const u8),
+        events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             const data = self.allocator.dupe(u8, event.data) catch return;
-            self.events.append(data) catch {
+            self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
             };
         }
@@ -580,20 +580,20 @@ test "EventSourceParser chunked input" {
     var parser = EventSourceParser.init(allocator);
     defer parser.deinit();
 
-    var events = std.array_list.Managed([]const u8).init(allocator);
+    var events = std.ArrayList([]const u8).empty;
     defer {
         for (events.items) |e| allocator.free(e);
-        events.deinit();
+        events.deinit(allocator);
     }
 
     const TestContext = struct {
-        events: *std.array_list.Managed([]const u8),
+        events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             const data = self.allocator.dupe(u8, event.data) catch return;
-            self.events.append(data) catch {
+            self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
             };
         }
@@ -651,20 +651,20 @@ test "EventSourceParser empty data field" {
     var parser = EventSourceParser.init(allocator);
     defer parser.deinit();
 
-    var events = std.array_list.Managed([]const u8).init(allocator);
+    var events = std.ArrayList([]const u8).empty;
     defer {
         for (events.items) |e| allocator.free(e);
-        events.deinit();
+        events.deinit(allocator);
     }
 
     const TestContext = struct {
-        events: *std.array_list.Managed([]const u8),
+        events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             const data = self.allocator.dupe(u8, event.data) catch return;
-            self.events.append(data) catch {
+            self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
             };
         }
@@ -705,19 +705,19 @@ test "rejects event stream exceeding buffer limit" {
 test "SimpleJsonEventStreamParser basic" {
     const allocator = std.testing.allocator;
 
-    var received_events = std.array_list.Managed(json_value.JsonValue).init(allocator);
+    var received_events = std.ArrayList(json_value.JsonValue).empty;
     defer {
         for (received_events.items) |*event| {
             event.deinit(allocator);
         }
-        received_events.deinit();
+        received_events.deinit(allocator);
     }
 
     var error_count: usize = 0;
     var complete_called = false;
 
     const TestContext = struct {
-        events: *std.array_list.Managed(json_value.JsonValue),
+        events: *std.ArrayList(json_value.JsonValue),
         error_count: *usize,
         complete_called: *bool,
         allocator: std.mem.Allocator,
@@ -734,7 +734,7 @@ test "SimpleJsonEventStreamParser basic" {
         .on_event = struct {
             fn handler(ctx: ?*anyopaque, data: json_value.JsonValue) void {
                 const self: *TestContext = @ptrCast(@alignCast(ctx));
-                self.events.append(data) catch {
+                self.events.append(self.allocator, data) catch {
                     var mutable_data = data;
                     mutable_data.deinit(self.allocator);
                 };

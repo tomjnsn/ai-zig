@@ -45,21 +45,21 @@ pub fn normalizeUrl(url: []const u8, allocator: std.mem.Allocator) ![]const u8 {
     if (!has_duplicates) return url;
 
     // Build normalized URL
-    var result = std.array_list.Managed(u8).init(allocator);
-    errdefer result.deinit();
+    var result = std.ArrayList(u8).empty;
+    errdefer result.deinit(allocator);
 
     // Copy everything up to and including the first path slash
-    try result.appendSlice(url[0 .. path_start + 1]);
+    try result.appendSlice(allocator, url[0 .. path_start + 1]);
 
     // Copy path, collapsing duplicate slashes
     var prev_was_slash = true; // we just wrote the first slash
     for (url[path_start + 1 ..]) |c| {
         if (c == '/' and prev_was_slash) continue;
-        try result.append(c);
+        try result.append(allocator, c);
         prev_was_slash = (c == '/');
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 // ============================================================================

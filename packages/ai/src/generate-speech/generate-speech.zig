@@ -379,13 +379,14 @@ test "streamSpeech delivers audio chunks from mock provider" {
     };
 
     const TestCtx = struct {
-        chunks: std.array_list.Managed([]const u8),
+        alloc: std.mem.Allocator,
+        chunks: std.ArrayList([]const u8),
         completed: bool = false,
         err: ?anyerror = null,
 
         fn onChunk(data: []const u8, context: ?*anyopaque) void {
             const self: *@This() = @ptrCast(@alignCast(context.?));
-            self.chunks.append(data) catch {};
+            self.chunks.append(self.alloc, data) catch {};
         }
 
         fn onError(err: anyerror, context: ?*anyopaque) void {
@@ -400,9 +401,10 @@ test "streamSpeech delivers audio chunks from mock provider" {
     };
 
     var test_ctx = TestCtx{
-        .chunks = std.array_list.Managed([]const u8).init(std.testing.allocator),
+        .alloc = std.testing.allocator,
+        .chunks = std.ArrayList([]const u8).empty,
     };
-    defer test_ctx.chunks.deinit();
+    defer test_ctx.chunks.deinit(std.testing.allocator);
 
     var mock = MockStreamSpeechModel{};
     var model = provider_types.asSpeechModel(MockStreamSpeechModel, &mock);

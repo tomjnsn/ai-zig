@@ -24,8 +24,8 @@ pub fn convertToGoogleGenerativeAIMessages(
     prompt: lm.LanguageModelV3Prompt,
     options: ConvertOptions,
 ) !ConvertResult {
-    var system_instruction_parts = std.array_list.Managed(prompt_types.GoogleGenerativeAIPrompt.SystemInstruction.TextPart).init(allocator);
-    var contents = std.array_list.Managed(prompt_types.GoogleGenerativeAIContent).init(allocator);
+    var system_instruction_parts = std.ArrayList(prompt_types.GoogleGenerativeAIPrompt.SystemInstruction.TextPart).empty;
+    var contents = std.ArrayList(prompt_types.GoogleGenerativeAIContent).empty;
     var system_messages_allowed = true;
 
     for (prompt) |msg| {
@@ -34,17 +34,17 @@ pub fn convertToGoogleGenerativeAIMessages(
                 if (!system_messages_allowed) {
                     return error.SystemMessageNotAllowed;
                 }
-                try system_instruction_parts.append(.{ .text = msg.content.system });
+                try system_instruction_parts.append(allocator, .{ .text = msg.content.system });
             },
             .user => {
                 system_messages_allowed = false;
 
-                var parts = std.array_list.Managed(prompt_types.GoogleGenerativeAIContentPart).init(allocator);
+                var parts = std.ArrayList(prompt_types.GoogleGenerativeAIContentPart).empty;
 
                 for (msg.content.user) |part| {
                     switch (part) {
                         .text => |t| {
-                            try parts.append(.{
+                            try parts.append(allocator, .{
                                 .text = .{ .text = t.text },
                             });
                         },
@@ -58,7 +58,7 @@ pub fn convertToGoogleGenerativeAIMessages(
                             // Check if it's a URL or base64 data
                             switch (f.data) {
                                 .url => |url| {
-                                    try parts.append(.{
+                                    try parts.append(allocator, .{
                                         .file_data = .{
                                             .mime_type = media_type,
                                             .file_uri = url,
@@ -66,7 +66,7 @@ pub fn convertToGoogleGenerativeAIMessages(
                                     });
                                 },
                                 .base64 => |data| {
-                                    try parts.append(.{
+                                    try parts.append(allocator, .{
                                         .inline_data = .{
                                             .mime_type = media_type,
                                             .data = data,
@@ -82,21 +82,21 @@ pub fn convertToGoogleGenerativeAIMessages(
                     }
                 }
 
-                try contents.append(.{
+                try contents.append(allocator, .{
                     .role = "user",
-                    .parts = try parts.toOwnedSlice(),
+                    .parts = try parts.toOwnedSlice(allocator),
                 });
             },
             .assistant => {
                 system_messages_allowed = false;
 
-                var parts = std.array_list.Managed(prompt_types.GoogleGenerativeAIContentPart).init(allocator);
+                var parts = std.ArrayList(prompt_types.GoogleGenerativeAIContentPart).empty;
 
                 for (msg.content.assistant) |part| {
                     switch (part) {
                         .text => |t| {
                             if (t.text.len > 0) {
-                                try parts.append(.{
+                                try parts.append(allocator, .{
                                     .text = .{
                                         .text = t.text,
                                         .thought = false,
@@ -106,7 +106,7 @@ pub fn convertToGoogleGenerativeAIMessages(
                         },
                         .reasoning => |r| {
                             if (r.text.len > 0) {
-                                try parts.append(.{
+                                try parts.append(allocator, .{
                                     .text = .{
                                         .text = r.text,
                                         .thought = true,
@@ -117,7 +117,7 @@ pub fn convertToGoogleGenerativeAIMessages(
                         .tool_call => |tc| {
                             // Convert JsonValue to std.json.Value
                             const std_json_args = try tc.input.toStdJson(allocator);
-                            try parts.append(.{
+                            try parts.append(allocator, .{
                                 .function_call = .{
                                     .name = tc.tool_name,
                                     .args = std_json_args,
@@ -127,7 +127,7 @@ pub fn convertToGoogleGenerativeAIMessages(
                         .file => |f| {
                             switch (f.data) {
                                 .base64 => |data| {
-                                    try parts.append(.{
+                                    try parts.append(allocator, .{
                                         .inline_data = .{
                                             .mime_type = f.media_type,
                                             .data = data,
@@ -141,15 +141,15 @@ pub fn convertToGoogleGenerativeAIMessages(
                     }
                 }
 
-                try contents.append(.{
+                try contents.append(allocator, .{
                     .role = "model",
-                    .parts = try parts.toOwnedSlice(),
+                    .parts = try parts.toOwnedSlice(allocator),
                 });
             },
             .tool => {
                 system_messages_allowed = false;
 
-                var parts = std.array_list.Managed(prompt_types.GoogleGenerativeAIContentPart).init(allocator);
+                var parts = std.ArrayList(prompt_types.GoogleGenerativeAIContentPart).empty;
 
                 for (msg.content.tool) |part| {
                     const output_text = switch (part.output) {
@@ -161,7 +161,7 @@ pub fn convertToGoogleGenerativeAIMessages(
                         .content => "Content output not yet supported",
                     };
 
-                    try parts.append(.{
+                    try parts.append(allocator, .{
                         .function_response = .{
                             .name = part.tool_name,
                             .response = .{
@@ -172,9 +172,9 @@ pub fn convertToGoogleGenerativeAIMessages(
                     });
                 }
 
-                try contents.append(.{
+                try contents.append(allocator, .{
                     .role = "user",
-                    .parts = try parts.toOwnedSlice(),
+                    .parts = try parts.toOwnedSlice(allocator),
                 });
             },
         }
@@ -184,21 +184,21 @@ pub fn convertToGoogleGenerativeAIMessages(
     if (options.is_gemma_model and system_instruction_parts.items.len > 0 and contents.items.len > 0) {
         if (std.mem.eql(u8, contents.items[0].role, "user") and contents.items[0].parts.len > 0) {
             // Build system text
-            var system_text = std.array_list.Managed(u8).init(allocator);
+            var system_text = std.ArrayList(u8).empty;
             for (system_instruction_parts.items, 0..) |part, i| {
-                if (i > 0) try system_text.appendSlice("\n\n");
-                try system_text.appendSlice(part.text);
+                if (i > 0) try system_text.appendSlice(allocator, "\n\n");
+                try system_text.appendSlice(allocator, part.text);
             }
-            try system_text.appendSlice("\n\n");
+            try system_text.appendSlice(allocator, "\n\n");
 
             // Prepend to first user message
             const first_part = contents.items[0].parts[0];
             switch (first_part) {
                 .text => |t| {
-                    try system_text.appendSlice(t.text);
+                    try system_text.appendSlice(allocator, t.text);
                     // Create new parts array with modified first element
                     var new_parts = try allocator.alloc(prompt_types.GoogleGenerativeAIContentPart, contents.items[0].parts.len);
-                    new_parts[0] = .{ .text = .{ .text = try system_text.toOwnedSlice() } };
+                    new_parts[0] = .{ .text = .{ .text = try system_text.toOwnedSlice(allocator) } };
                     for (contents.items[0].parts[1..], 1..) |p, j| {
                         new_parts[j] = p;
                     }
@@ -212,13 +212,13 @@ pub fn convertToGoogleGenerativeAIMessages(
     // Build system instruction
     const system_instruction: ?prompt_types.GoogleGenerativeAIPrompt.SystemInstruction =
         if (system_instruction_parts.items.len > 0 and !options.is_gemma_model)
-        .{ .parts = try system_instruction_parts.toOwnedSlice() }
+        .{ .parts = try system_instruction_parts.toOwnedSlice(allocator) }
     else
         null;
 
     return .{
         .system_instruction = system_instruction,
-        .contents = try contents.toOwnedSlice(),
+        .contents = try contents.toOwnedSlice(allocator),
     };
 }
 

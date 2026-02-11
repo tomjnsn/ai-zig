@@ -36,7 +36,7 @@ pub fn prepareTools(
     tools: ?[]const lm.LanguageModelV3CallOptions.Tool,
     tool_choice: ?lm.LanguageModelV3ToolChoice,
 ) !PreparedTools {
-    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
+    var warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
     // Handle empty or null tools
     if (tools == null or tools.?.len == 0) {
@@ -66,7 +66,7 @@ pub fn prepareTools(
                 tool_count += 1;
             },
             .provider => |prov| {
-                try warnings.append(.{
+                try warnings.append(allocator, .{
                     .unsupported = .{
                         .feature = try std.fmt.allocPrint(
                             allocator,
@@ -92,13 +92,13 @@ pub fn prepareTools(
             .tool => |t| blk: {
                 // Filter tools to only the specified one
                 const tool_name = t.tool_name;
-                var filtered = std.array_list.Managed(MistralTool).init(allocator);
+                var filtered = std.ArrayList(MistralTool).empty;
                 for (mistral_tools) |tool| {
                     if (std.mem.eql(u8, tool.function.name, tool_name)) {
-                        try filtered.append(tool);
+                        try filtered.append(allocator, tool);
                     }
                 }
-                mistral_tools = try filtered.toOwnedSlice();
+                mistral_tools = try filtered.toOwnedSlice(allocator);
                 break :blk .any;
             },
         };
@@ -107,7 +107,7 @@ pub fn prepareTools(
     return .{
         .tools = if (tool_count > 0) mistral_tools else null,
         .tool_choice = mistral_tool_choice,
-        .warnings = try warnings.toOwnedSlice(),
+        .warnings = try warnings.toOwnedSlice(allocator),
     };
 }
 
