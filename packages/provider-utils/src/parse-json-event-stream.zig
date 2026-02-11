@@ -65,7 +65,8 @@ pub const EventSourceParser = struct {
         on_event: *const fn (ctx: ?*anyopaque, event: Event) void,
         ctx: ?*anyopaque,
     ) !void {
-        // Check buffer size limit before appending
+        // Check projected buffer size before appending to avoid unnecessary allocation.
+        // Uses current + incoming to catch large chunks that would exceed the limit.
         if (self.max_buffer_size) |max_size| {
             if (self.buffer.items.len + data.len > max_size) {
                 return error.BufferLimitExceeded;
