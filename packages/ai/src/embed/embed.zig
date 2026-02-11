@@ -184,6 +184,10 @@ pub fn embed(
         f64_values[i] = @as(f64, @floatCast(v));
     }
 
+    // Free provider-allocated data (providers allocate with our allocator per contract)
+    allocator.free(f32_values);
+    allocator.free(embed_success.embeddings);
+
     return EmbedResult{
         .embedding = .{
             .values = f64_values,
@@ -398,11 +402,6 @@ test "embed returns embeddings from mock provider" {
     const MockEmbeddingModel = struct {
         const Self = @This();
 
-        const mock_values = [_]f32{ 0.1, 0.2, 0.3 };
-        const mock_embeddings = [_]provider_types.EmbeddingModelV3Embedding{
-            &mock_values,
-        };
-
         pub fn getProvider(_: *const Self) []const u8 {
             return "mock";
         }
@@ -430,12 +429,25 @@ test "embed returns embeddings from mock provider" {
         pub fn doEmbed(
             _: *const Self,
             _: provider_types.EmbeddingModelCallOptions,
-            _: std.mem.Allocator,
+            alloc: std.mem.Allocator,
             callback: *const fn (?*anyopaque, EmbeddingModelV3.EmbedResult) void,
             ctx: ?*anyopaque,
         ) void {
+            // Allocate with the provided allocator per contract
+            const vals = alloc.alloc(f32, 3) catch {
+                callback(ctx, .{ .failure = error.OutOfMemory });
+                return;
+            };
+            vals[0] = 0.1;
+            vals[1] = 0.2;
+            vals[2] = 0.3;
+            const embeddings = alloc.alloc(provider_types.EmbeddingModelV3Embedding, 1) catch {
+                callback(ctx, .{ .failure = error.OutOfMemory });
+                return;
+            };
+            embeddings[0] = vals;
             callback(ctx, .{ .success = .{
-                .embeddings = &mock_embeddings,
+                .embeddings = embeddings,
                 .usage = .{ .tokens = 5 },
             } });
         }
@@ -659,8 +671,6 @@ test "embed sequential requests don't leak memory" {
     const MockStressEmbed = struct {
         const Self = @This();
 
-        const mock_embedding = [_]f32{ 0.1, 0.2, 0.3, 0.4 };
-
         pub fn getProvider(_: *const Self) []const u8 {
             return "mock";
         }
@@ -688,13 +698,26 @@ test "embed sequential requests don't leak memory" {
         pub fn doEmbed(
             _: *const Self,
             _: provider_types.EmbeddingModelCallOptions,
-            _: std.mem.Allocator,
+            alloc: std.mem.Allocator,
             callback: *const fn (?*anyopaque, provider_types.EmbeddingModelV3.EmbedResult) void,
             ctx: ?*anyopaque,
         ) void {
-            const embeddings = [_][]const f32{&mock_embedding};
+            // Allocate with the provided allocator per contract
+            const vals = alloc.alloc(f32, 4) catch {
+                callback(ctx, .{ .failure = error.OutOfMemory });
+                return;
+            };
+            vals[0] = 0.1;
+            vals[1] = 0.2;
+            vals[2] = 0.3;
+            vals[3] = 0.4;
+            const embeddings = alloc.alloc(provider_types.EmbeddingModelV3Embedding, 1) catch {
+                callback(ctx, .{ .failure = error.OutOfMemory });
+                return;
+            };
+            embeddings[0] = vals;
             callback(ctx, .{ .success = .{
-                .embeddings = &embeddings,
+                .embeddings = embeddings,
                 .usage = .{ .tokens = 5 },
             } });
         }
