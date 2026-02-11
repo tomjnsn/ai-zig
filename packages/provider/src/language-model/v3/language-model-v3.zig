@@ -57,7 +57,10 @@ pub const LanguageModelV3 = struct {
             ?*anyopaque,
         ) void,
 
-        /// Generate a language model output (streaming)
+        /// Generate a language model output (streaming).
+        /// IMPORTANT: Implementations MUST complete all callbacks synchronously
+        /// before returning. The caller may pass stack-allocated context via
+        /// StreamCallbacks.ctx that becomes invalid after doStream returns.
         doStream: *const fn (
             *anyopaque,
             LanguageModelV3CallOptions,
@@ -176,7 +179,9 @@ pub const LanguageModelV3 = struct {
         self.vtable.doGenerate(self.impl, options, allocator, callback, ctx);
     }
 
-    /// Generate a response (streaming)
+    /// Generate a response (streaming).
+    /// All callbacks are invoked synchronously before this function returns.
+    /// Callers may safely pass stack-allocated context via callbacks.ctx.
     pub fn doStream(
         self: Self,
         options: LanguageModelV3CallOptions,

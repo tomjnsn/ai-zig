@@ -411,10 +411,11 @@ pub fn streamText(
         }
     };
 
+    // Safety: bridge is stack-allocated but this is safe because doStream
+    // completes all callbacks synchronously before returning. See the
+    // doStream contract in LanguageModelV3.VTable.
     var bridge = BridgeCtx{ .res = result, .cbs = options.callbacks };
     const bridge_ptr: *anyopaque = @ptrCast(&bridge);
-
-    // Call model's doStream
     options.model.doStream(call_options, allocator, .{
         .on_part = BridgeCtx.onPart,
         .on_error = BridgeCtx.onError,
