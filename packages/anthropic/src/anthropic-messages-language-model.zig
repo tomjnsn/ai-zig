@@ -187,23 +187,48 @@ pub const AnthropicMessagesLanguageModel = struct {
         const body = try serializeRequest(request_allocator, request);
 
         // Make the request
-        var call_response: ?provider_utils.HttpResponse = null;
+        const HttpCallCtx = struct {
+            response: ?provider_utils.HttpResponse = null,
+            http_error: ?provider_utils.HttpError = null,
+        };
+        var call_ctx = HttpCallCtx{};
 
         try http_client.post(url, headers, body, request_allocator,
             struct {
                 fn onResponse(ctx: ?*anyopaque, resp: provider_utils.HttpResponse) void {
-                    const r: *?provider_utils.HttpResponse = @ptrCast(@alignCast(ctx.?));
-                    r.* = resp;
+                    const c: *HttpCallCtx = @ptrCast(@alignCast(ctx.?));
+                    c.response = resp;
                 }
             }.onResponse,
             struct {
-                fn onError(_: ?*anyopaque, _: provider_utils.HttpError) void {}
+                fn onError(ctx: ?*anyopaque, err: provider_utils.HttpError) void {
+                    const c: *HttpCallCtx = @ptrCast(@alignCast(ctx.?));
+                    c.http_error = err;
+                }
             }.onError,
-            @as(?*anyopaque, @ptrCast(&call_response)),
+            @as(?*anyopaque, @ptrCast(&call_ctx)),
         );
 
-        const http_response = call_response orelse return error.NoResponse;
-        if (!http_response.isSuccess()) return error.ApiCallError;
+        if (call_ctx.http_error) |http_err| {
+            if (call_options.error_diagnostic) |diag| {
+                diag.provider = self.config.provider;
+                diag.kind = .network;
+                diag.setMessage(http_err.message);
+                if (http_err.status_code) |code| {
+                    diag.status_code = code;
+                    diag.classifyStatus();
+                }
+            }
+            return error.ApiCallError;
+        }
+        const http_response = call_ctx.response orelse return error.NoResponse;
+        if (!http_response.isSuccess()) {
+            if (call_options.error_diagnostic) |diag| {
+                diag.provider = self.config.provider;
+                diag.populateFromResponse(http_response.status_code, http_response.body);
+            }
+            return error.ApiCallError;
+        }
         const response_body = http_response.body;
 
         // Parse response
