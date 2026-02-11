@@ -64,7 +64,7 @@ pub const MockHttpClient = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .recorded_requests = std.ArrayList(RecordedRequest){},
+            .recorded_requests = std.ArrayList(RecordedRequest).empty,
         };
     }
 
