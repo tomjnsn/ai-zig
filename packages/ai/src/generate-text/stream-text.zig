@@ -250,7 +250,7 @@ pub const StreamTextResult = struct {
             .finish => |finish| {
                 self.finish_reason = finish.finish_reason;
                 self.usage = finish.usage;
-                self.total_usage = finish.total_usage;
+                self.total_usage = self.total_usage.add(finish.usage);
                 self.is_complete = true;
             },
             else => {},
