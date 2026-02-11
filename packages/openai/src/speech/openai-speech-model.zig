@@ -123,21 +123,24 @@ pub const OpenAISpeechModel = struct {
         const body = try serializeRequest(request_allocator, request);
 
         // Make the request (expecting binary response)
-        var response_data: ?[]const u8 = null;
-        var response_headers: ?std.StringHashMap([]const u8) = null;
+        var call_response: ?provider_utils.HttpResponse = null;
 
-        try http_client.post(url, headers, body, request_allocator, struct {
-            fn onResponse(ctx: *anyopaque, resp_headers: std.StringHashMap([]const u8), resp_body: []const u8) void {
-                const data = @as(*struct { body: *?[]const u8, headers: *?std.StringHashMap([]const u8) }, @ptrCast(@alignCast(ctx)));
-                data.body.* = resp_body;
-                data.headers.* = resp_headers;
-            }
-            fn onError(_: *anyopaque, _: anyerror) void {}
-        }.onResponse, struct {
-            fn onError(_: *anyopaque, _: anyerror) void {}
-        }.onError, &.{ .body = &response_data, .headers = &response_headers });
+        try http_client.post(url, headers, body, request_allocator,
+            struct {
+                fn onResponse(ctx: ?*anyopaque, resp: provider_utils.HttpResponse) void {
+                    const r: *?provider_utils.HttpResponse = @ptrCast(@alignCast(ctx.?));
+                    r.* = resp;
+                }
+            }.onResponse,
+            struct {
+                fn onError(_: ?*anyopaque, _: provider_utils.HttpError) void {}
+            }.onError,
+            @as(?*anyopaque, @ptrCast(&call_response)),
+        );
 
-        const audio_data = response_data orelse return error.NoResponse;
+        const http_response = call_response orelse return error.NoResponse;
+        if (!http_response.isSuccess()) return error.ApiCallError;
+        const audio_data = http_response.body;
 
         // Clone warnings
         var result_warnings = try result_allocator.alloc(shared.SharedV3Warning, warnings.items.len);
@@ -151,7 +154,7 @@ pub const OpenAISpeechModel = struct {
             .response = .{
                 .timestamp = timestamp,
                 .model_id = try result_allocator.dupe(u8, self.model_id),
-                .headers = response_headers,
+                .headers = null,
             },
         };
     }
