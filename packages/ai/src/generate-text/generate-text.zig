@@ -153,11 +153,10 @@ pub const GenerateTextResult = struct {
         return self.tool_calls.len > 0;
     }
 
-    /// Clean up resources
+    /// Clean up resources allocated by generateText.
+    /// Must be called when the result is no longer needed.
     pub fn deinit(self: *GenerateTextResult, allocator: std.mem.Allocator) void {
-        _ = self;
-        _ = allocator;
-        // Arena allocator handles cleanup
+        allocator.free(self.steps);
     }
 };
 
@@ -303,8 +302,9 @@ pub fn generateText(
         }
     }
 
-    // Track steps
-    var steps = std.array_list.Managed(StepResult).init(arena_allocator);
+    // Track steps - use caller's allocator since steps are returned to caller
+    var steps = std.array_list.Managed(StepResult).init(allocator);
+    errdefer steps.deinit();
     var total_usage = LanguageModelUsage{};
 
     // Multi-step loop
@@ -518,10 +518,11 @@ test "generateText returns text from mock provider" {
     var mock = MockModel{};
     var model = provider_types.asLanguageModel(MockModel, &mock);
 
-    const result = try generateText(std.testing.allocator, .{
+    var result = try generateText(std.testing.allocator, .{
         .model = &model,
         .prompt = "Say hello",
     });
+    defer result.deinit(std.testing.allocator);
 
     // This should return the text from the mock model's doGenerate response
     try std.testing.expectEqualStrings("Hello from mock model!", result.text);
@@ -608,7 +609,7 @@ test "generateText multi-turn conversation" {
     var mock = MockMultiTurnModel{};
     var model = provider_types.asLanguageModel(MockMultiTurnModel, &mock);
 
-    const result = try generateText(std.testing.allocator, .{
+    var result = try generateText(std.testing.allocator, .{
         .model = &model,
         .system = "You are a geography expert.",
         .messages = &[_]Message{
@@ -617,6 +618,7 @@ test "generateText multi-turn conversation" {
             .{ .role = .user, .content = .{ .text = "Tell me more about it." } },
         },
     });
+    defer result.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings("Paris is the capital of France.", result.text);
     try std.testing.expectEqual(@as(?u64, 25), result.usage.input_tokens);
@@ -785,12 +787,79 @@ test "generateText sequential requests don't leak memory" {
     // Run 50 sequential requests - testing allocator detects leaks
     var i: u32 = 0;
     while (i < 50) : (i += 1) {
-        const result = try generateText(std.testing.allocator, .{
+        var result = try generateText(std.testing.allocator, .{
             .model = &model,
             .prompt = "Hello",
         });
+        defer result.deinit(std.testing.allocator);
         try std.testing.expectEqualStrings("Response", result.text);
     }
+}
+
+test "generateText steps remain valid after return (no use-after-free)" {
+    const MockModel3 = struct {
+        const Self = @This();
+
+        const mock_content = [_]provider_types.LanguageModelV3Content{
+            .{ .text = .{ .text = "Step result text" } },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-steps";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .content = &mock_content,
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.initWithTotals(10, 20),
+            } });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockModel3{};
+    var model = provider_types.asLanguageModel(MockModel3, &mock);
+
+    var result = try generateText(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "Test steps",
+    });
+    defer result.deinit(std.testing.allocator);
+
+    // Verify steps data is accessible and valid after function return
+    try std.testing.expectEqual(@as(usize, 1), result.steps.len);
+    try std.testing.expectEqualStrings("Step result text", result.steps[0].text);
+    try std.testing.expectEqual(FinishReason.stop, result.steps[0].finish_reason);
+    try std.testing.expectEqual(@as(?u64, 10), result.steps[0].usage.input_tokens);
+    try std.testing.expectEqual(@as(?u64, 20), result.steps[0].usage.output_tokens);
 }
 
 test "GenerateTextResult.getText returns text" {
