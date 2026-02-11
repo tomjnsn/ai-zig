@@ -17,6 +17,7 @@ pub const InvalidResponseDataError = errors.InvalidResponseDataError;
 pub const NoSuchModelError = errors.NoSuchModelError;
 pub const TypeValidationError = errors.TypeValidationError;
 pub const UnsupportedFunctionalityError = errors.UnsupportedFunctionalityError;
+pub const ErrorDiagnostic = errors.ErrorDiagnostic;
 pub const getErrorMessage = errors.getErrorMessage;
 
 // Shared Types
