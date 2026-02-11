@@ -55,7 +55,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         self: *const Self,
         call_options: lm.LanguageModelV3CallOptions,
         result_allocator: std.mem.Allocator,
-        callback: *const fn (?*anyopaque, GenerateResult) void,
+        callback: *const fn (?*anyopaque, lm.LanguageModelV3.GenerateResult) void,
         context: ?*anyopaque,
     ) void {
         // Use arena for request processing
@@ -734,9 +734,10 @@ const StreamState = struct {
 
 /// Serialize request to JSON
 fn serializeRequest(allocator: std.mem.Allocator, request: api.AnthropicMessagesRequest) ![]const u8 {
-    var buffer = std.ArrayList(u8).empty;
-    try std.json.stringify(request, .{}, buffer.writer(allocator));
-    return buffer.toOwnedSlice(allocator);
+    var out: std.io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try std.json.Stringify.value(request, .{}, &out.writer);
+    return out.toOwnedSlice();
 }
 
 test "AnthropicMessagesLanguageModel basic" {

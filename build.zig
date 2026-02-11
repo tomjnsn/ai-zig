@@ -65,6 +65,7 @@ pub fn build(b: *std.Build) void {
     });
     google_vertex_mod.addImport("provider", provider_mod);
     google_vertex_mod.addImport("provider-utils", provider_utils_mod);
+    google_vertex_mod.addImport("google", google_mod);
 
     // Azure provider
     const azure_mod = b.addModule("azure", .{
@@ -383,6 +384,25 @@ pub fn build(b: *std.Build) void {
         }
         test_step.dependOn(&b.addRunArtifact(tests).step);
     }
+
+    // Live provider integration tests (requires API keys)
+    const test_live_step = b.step("test-live", "Run live provider integration tests (requires API keys)");
+    const live_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/integration/live_provider_test.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .test_runner = .{ .path = b.path("test_runner.zig"), .mode = .simple },
+    });
+    live_tests.root_module.addImport("ai", ai_mod);
+    live_tests.root_module.addImport("provider", provider_mod);
+    live_tests.root_module.addImport("provider-utils", provider_utils_mod);
+    live_tests.root_module.addImport("openai", openai_mod);
+    live_tests.root_module.addImport("azure", azure_mod);
+    live_tests.root_module.addImport("xai", xai_mod);
+    // TODO: Add anthropic, google, google-vertex once their vtable serialization bugs are fixed
+    test_live_step.dependOn(&b.addRunArtifact(live_tests).step);
 
     // Example executable
     const example = b.addExecutable(.{

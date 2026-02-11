@@ -1,7 +1,7 @@
 const std = @import("std");
 const provider_utils = @import("provider-utils");
-const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
-const lm = @import("../../provider/src/language-model/v3/index.zig");
+const provider_v3 = @import("provider").provider;
+const lm = @import("provider").language_model;
 
 const config_mod = @import("google-vertex-config.zig");
 const embed_model = @import("google-vertex-embedding-model.zig");
@@ -9,8 +9,8 @@ const image_model = @import("google-vertex-image-model.zig");
 const options_mod = @import("google-vertex-options.zig");
 
 // Import Google AI language model (Vertex reuses it)
-const google_lang_model = @import("../../google/src/google-generative-ai-language-model.zig");
-const google_config = @import("../../google/src/google-config.zig");
+const google_lang_model = @import("google").lang_model;
+const google_config = @import("google").config;
 
 /// Google Vertex AI Provider settings
 pub const GoogleVertexProviderSettings = struct {

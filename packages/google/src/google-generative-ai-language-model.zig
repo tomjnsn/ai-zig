@@ -598,16 +598,14 @@ pub const GoogleGenerativeAILanguageModel = struct {
         }
 
         // Add response format
-        if (call_options.response_format) |format| {
-            switch (format) {
-                .json => {
-                    try gen_config.put("responseMimeType", .{ .string = "application/json" });
-                    if (format.json.schema) |schema| {
-                        try gen_config.put("responseSchema", schema);
-                    }
-                },
-                .text => {},
-            }
+        switch (call_options.response_format) {
+            .json => |json_fmt| {
+                try gen_config.put("responseMimeType", .{ .string = "application/json" });
+                if (json_fmt.schema) |schema| {
+                    try gen_config.put("responseSchema", schema);
+                }
+            },
+            .text => {},
         }
 
         if (gen_config.count() > 0) {
