@@ -1022,3 +1022,236 @@ test "OpenAI streaming chunk parsing" {
     try std.testing.expectEqualStrings("Hello", chunk.choices[0].delta.content.?);
     try std.testing.expect(chunk.choices[0].finish_reason == null);
 }
+
+test "ErrorDiagnostic populated on HTTP 429 rate limit" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 429,
+        .body = "{\"error\":{\"message\":\"Rate limit exceeded\",\"type\":\"rate_limit_error\"}}",
+    });
+
+    const config = config_mod.OpenAIConfig{
+        .provider = "openai.chat",
+        .base_url = "https://api.openai.com/v1",
+        .headers_fn = struct {
+            fn getHeaders(_: *const config_mod.OpenAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
+                return std.StringHashMap([]const u8).init(alloc);
+            }
+        }.getHeaders,
+        .http_client = mock.asInterface(),
+    };
+
+    var model = OpenAIChatLanguageModel.init(allocator, "gpt-4o", config);
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Should have failed
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    // Diagnostic should be populated
+    try std.testing.expectEqual(@as(?u16, 429), diag.status_code);
+    try std.testing.expect(diag.kind == .rate_limit);
+    try std.testing.expect(diag.is_retryable);
+    try std.testing.expectEqualStrings("openai.chat", diag.provider.?);
+    try std.testing.expectEqualStrings("Rate limit exceeded", diag.message().?);
+    try std.testing.expect(diag.responseBody() != null);
+}
+
+test "ErrorDiagnostic populated on HTTP 401 authentication error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 401,
+        .body = "{\"error\":{\"message\":\"Invalid API key\",\"type\":\"authentication_error\"}}",
+    });
+
+    const config = config_mod.OpenAIConfig{
+        .provider = "openai.chat",
+        .base_url = "https://api.openai.com/v1",
+        .headers_fn = struct {
+            fn getHeaders(_: *const config_mod.OpenAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
+                return std.StringHashMap([]const u8).init(alloc);
+            }
+        }.getHeaders,
+        .http_client = mock.asInterface(),
+    };
+
+    var model = OpenAIChatLanguageModel.init(allocator, "gpt-4o", config);
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Diagnostic should indicate auth error
+    try std.testing.expectEqual(@as(?u16, 401), diag.status_code);
+    try std.testing.expect(diag.kind == .authentication);
+    try std.testing.expect(!diag.is_retryable);
+    try std.testing.expectEqualStrings("Invalid API key", diag.message().?);
+}
+
+test "ErrorDiagnostic populated on network error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setError(.{
+        .kind = .connection_failed,
+        .message = "Connection refused",
+    });
+
+    const config = config_mod.OpenAIConfig{
+        .provider = "openai.chat",
+        .base_url = "https://api.openai.com/v1",
+        .headers_fn = struct {
+            fn getHeaders(_: *const config_mod.OpenAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
+                return std.StringHashMap([]const u8).init(alloc);
+            }
+        }.getHeaders,
+        .http_client = mock.asInterface(),
+    };
+
+    var model = OpenAIChatLanguageModel.init(allocator, "gpt-4o", config);
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Diagnostic should indicate network error
+    try std.testing.expect(diag.kind == .network);
+    try std.testing.expectEqualStrings("Connection refused", diag.message().?);
+    try std.testing.expectEqualStrings("openai.chat", diag.provider.?);
+}
+
+test "ErrorDiagnostic populated on HTTP 500 server error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 500,
+        .body = "Internal Server Error",
+    });
+
+    const config = config_mod.OpenAIConfig{
+        .provider = "openai.chat",
+        .base_url = "https://api.openai.com/v1",
+        .headers_fn = struct {
+            fn getHeaders(_: *const config_mod.OpenAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
+                return std.StringHashMap([]const u8).init(alloc);
+            }
+        }.getHeaders,
+        .http_client = mock.asInterface(),
+    };
+
+    var model = OpenAIChatLanguageModel.init(allocator, "gpt-4o", config);
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Diagnostic should indicate server error
+    try std.testing.expectEqual(@as(?u16, 500), diag.status_code);
+    try std.testing.expect(diag.kind == .server_error);
+    try std.testing.expect(diag.is_retryable);
+    // Non-JSON body falls back to status text
+    try std.testing.expectEqualStrings("Internal Server Error", diag.message().?);
+}
