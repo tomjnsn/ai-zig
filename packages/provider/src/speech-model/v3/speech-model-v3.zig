@@ -1,6 +1,7 @@
 const std = @import("std");
 const shared = @import("../../shared/v3/index.zig");
 const json_value = @import("../../json-value/index.zig");
+const ErrorDiagnostic = @import("../../errors/diagnostic.zig").ErrorDiagnostic;
 
 /// Call options for speech generation
 pub const SpeechModelV3CallOptions = struct {
@@ -29,6 +30,9 @@ pub const SpeechModelV3CallOptions = struct {
 
     /// Additional HTTP headers to be sent with the request.
     headers: ?std.StringHashMap([]const u8) = null,
+
+    /// Error diagnostic out-parameter for rich error context on failure.
+    error_diagnostic: ?*ErrorDiagnostic = null,
 };
 
 /// Speech model specification version 3.

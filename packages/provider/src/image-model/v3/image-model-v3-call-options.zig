@@ -1,6 +1,7 @@
 const std = @import("std");
 const shared = @import("../../shared/v3/index.zig");
 const ImageModelV3File = @import("image-model-v3-file.zig").ImageModelV3File;
+const ErrorDiagnostic = @import("../../errors/diagnostic.zig").ErrorDiagnostic;
 
 /// Call options for image generation.
 pub const ImageModelV3CallOptions = struct {
@@ -33,6 +34,9 @@ pub const ImageModelV3CallOptions = struct {
 
     /// Additional HTTP headers to be sent with the request.
     headers: ?std.StringHashMap([]const u8) = null,
+
+    /// Error diagnostic out-parameter for rich error context on failure.
+    error_diagnostic: ?*ErrorDiagnostic = null,
 
     /// Image size specification
     pub const ImageSize = struct {

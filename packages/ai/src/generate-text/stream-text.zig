@@ -141,6 +141,9 @@ pub const StreamTextOptions = struct {
 
     /// Retry policy for automatic retries
     retry_policy: ?@import("../retry.zig").RetryPolicy = null,
+
+    /// Error diagnostic out-parameter for rich error context on failure.
+    error_diagnostic: ?*provider_types.ErrorDiagnostic = null,
 };
 
 /// Result handle for streaming text generation
