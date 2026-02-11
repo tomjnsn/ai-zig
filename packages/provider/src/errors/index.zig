@@ -52,6 +52,10 @@ pub const TypeValidationError = type_validation_error.TypeValidationError;
 pub const unsupported_functionality_error = @import("unsupported-functionality-error.zig");
 pub const UnsupportedFunctionalityError = unsupported_functionality_error.UnsupportedFunctionalityError;
 
+// Error diagnostic (out-parameter pattern for rich error context)
+pub const diagnostic = @import("diagnostic.zig");
+pub const ErrorDiagnostic = diagnostic.ErrorDiagnostic;
+
 // Error message utilities
 pub const get_error_message = @import("get-error-message.zig");
 pub const getErrorMessage = get_error_message.getErrorMessage;
