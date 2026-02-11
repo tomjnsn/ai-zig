@@ -144,7 +144,7 @@ pub fn generateObject(
 
     writer.writeAll("You must respond with a valid JSON object matching the following schema:\n") catch return GenerateObjectError.OutOfMemory;
 
-    // Serialize schema using valueAlloc
+    // Serialize schema to JSON string (std.json.Stringify.valueAlloc exists in Zig 0.15+)
     const schema_json = std.json.Stringify.valueAlloc(arena_allocator, options.schema.json_schema, .{}) catch return GenerateObjectError.OutOfMemory;
     writer.writeAll(schema_json) catch return GenerateObjectError.OutOfMemory;
 
