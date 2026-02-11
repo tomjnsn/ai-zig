@@ -199,16 +199,17 @@ pub const HttpClient = struct {
 
     pub const max_header_count = 64;
 
-    /// Convenience method for making a POST request
+    /// Convenience method for making a POST request.
+    /// Converts a StringHashMap of headers to the slice format expected by request().
     pub fn post(
         self: HttpClient,
         url: []const u8,
         headers: std.StringHashMap([]const u8),
         body: []const u8,
         allocator: std.mem.Allocator,
-        on_response: anytype,
-        on_error: anytype,
-        ctx: anytype,
+        on_response: *const fn (ctx: ?*anyopaque, response: Response) void,
+        on_error: *const fn (ctx: ?*anyopaque, err: HttpError) void,
+        ctx: ?*anyopaque,
     ) !void {
         // Convert headers to slice
         var header_list: [max_header_count]Header = undefined;
@@ -223,30 +224,12 @@ pub const HttpClient = struct {
             header_count += 1;
         }
 
-        const req = Request{
+        self.request(.{
             .method = .POST,
             .url = url,
             .headers = header_list[0..header_count],
             .body = body,
-        };
-
-        // Call the underlying request method with adapted callbacks
-        self.request(req, allocator, struct {
-            fn onResponse(c: ?*anyopaque, response: Response) void {
-                _ = c;
-                _ = response;
-                // TODO: Adapt response format
-            }
-        }.onResponse, struct {
-            fn onError(c: ?*anyopaque, err: HttpError) void {
-                _ = c;
-                _ = err;
-            }
-        }.onError, null);
-
-        _ = on_response;
-        _ = on_error;
-        _ = ctx;
+        }, allocator, on_response, on_error, ctx);
     }
 };
 

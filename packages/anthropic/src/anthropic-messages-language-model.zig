@@ -187,21 +187,24 @@ pub const AnthropicMessagesLanguageModel = struct {
         const body = try serializeRequest(request_allocator, request);
 
         // Make the request
-        var response_data: ?[]const u8 = null;
-        var response_headers: ?std.StringHashMap([]const u8) = null;
+        var call_response: ?provider_utils.HttpResponse = null;
 
-        try http_client.post(url, headers, body, request_allocator, struct {
-            fn onResponse(ctx: *anyopaque, resp_headers: std.StringHashMap([]const u8), resp_body: []const u8) void {
-                const data = @as(*struct { body: *?[]const u8, headers: *?std.StringHashMap([]const u8) }, @ptrCast(@alignCast(ctx)));
-                data.body.* = resp_body;
-                data.headers.* = resp_headers;
-            }
-            fn onError(_: *anyopaque, _: anyerror) void {}
-        }.onResponse, struct {
-            fn onError(_: *anyopaque, _: anyerror) void {}
-        }.onError, &.{ .body = &response_data, .headers = &response_headers });
+        try http_client.post(url, headers, body, request_allocator,
+            struct {
+                fn onResponse(ctx: ?*anyopaque, resp: provider_utils.HttpResponse) void {
+                    const r: *?provider_utils.HttpResponse = @ptrCast(@alignCast(ctx.?));
+                    r.* = resp;
+                }
+            }.onResponse,
+            struct {
+                fn onError(_: ?*anyopaque, _: provider_utils.HttpError) void {}
+            }.onError,
+            @as(?*anyopaque, @ptrCast(&call_response)),
+        );
 
-        const response_body = response_data orelse return error.NoResponse;
+        const http_response = call_response orelse return error.NoResponse;
+        if (!http_response.isSuccess()) return error.ApiCallError;
+        const response_body = http_response.body;
 
         // Parse response
         const parsed = std.json.parseFromSlice(api.AnthropicMessagesResponse, request_allocator, response_body, .{}) catch {
