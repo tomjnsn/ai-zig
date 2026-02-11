@@ -156,6 +156,12 @@ pub const GenerateTextResult = struct {
     /// Clean up resources allocated by generateText.
     /// Must be called when the result is no longer needed.
     pub fn deinit(self: *GenerateTextResult, allocator: std.mem.Allocator) void {
+        // Free owned strings in each step
+        for (self.steps) |step| {
+            allocator.free(step.text);
+            allocator.free(step.response.id);
+            allocator.free(step.response.model_id);
+        }
         allocator.free(self.steps);
     }
 };
@@ -355,9 +361,9 @@ pub fn generateText(
         const CallbackCtx = struct { result: ?LanguageModelV3.GenerateResult = null };
         var cb_ctx = CallbackCtx{};
 
-        // Call model's doGenerate
+        // Call model's doGenerate (use arena for provider temp allocations)
         const ctx_ptr: *anyopaque = @ptrCast(&cb_ctx);
-        options.model.doGenerate(call_options, allocator, struct {
+        options.model.doGenerate(call_options, arena_allocator, struct {
             fn onResult(ptr: ?*anyopaque, result: LanguageModelV3.GenerateResult) void {
                 const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
                 ctx.result = result;
@@ -382,6 +388,18 @@ pub fn generateText(
             }
         }
 
+        // Dupe result strings to base allocator so they outlive the arena
+        const owned_text = allocator.dupe(u8, generated_text) catch return GenerateTextError.OutOfMemory;
+        errdefer allocator.free(owned_text);
+
+        const raw_id = if (gen_success.response) |r| r.metadata.id orelse "" else "";
+        const owned_id = allocator.dupe(u8, raw_id) catch return GenerateTextError.OutOfMemory;
+        errdefer allocator.free(owned_id);
+
+        const raw_model_id = if (gen_success.response) |r| r.metadata.model_id orelse options.model.getModelId() else options.model.getModelId();
+        const owned_model_id = allocator.dupe(u8, raw_model_id) catch return GenerateTextError.OutOfMemory;
+        errdefer allocator.free(owned_model_id);
+
         // Map finish reason
         const finish_reason: FinishReason = switch (gen_success.finish_reason) {
             .stop => .stop,
@@ -395,7 +413,7 @@ pub fn generateText(
 
         const step_result = StepResult{
             .content = &[_]ContentPart{},
-            .text = generated_text,
+            .text = owned_text,
             .finish_reason = finish_reason,
             .usage = .{
                 .input_tokens = gen_success.usage.input_tokens.total,
@@ -404,8 +422,8 @@ pub fn generateText(
             .tool_calls = &[_]ToolCall{},
             .tool_results = &[_]ToolResult{},
             .response = .{
-                .id = if (gen_success.response) |r| r.metadata.id orelse "" else "",
-                .model_id = if (gen_success.response) |r| r.metadata.model_id orelse options.model.getModelId() else options.model.getModelId(),
+                .id = owned_id,
+                .model_id = owned_model_id,
                 .timestamp = std.time.timestamp(),
             },
         };
