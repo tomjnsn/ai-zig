@@ -2,9 +2,15 @@ const std = @import("std");
 
 /// API key prefixes that indicate sensitive tokens
 const sensitive_prefixes = [_][]const u8{
-    "sk-",
     "sk-proj-",
+    "sk-",
     "anthropic-sk-ant-",
+    "AIza",
+    "AKIA",
+    "msk-",
+    "co-",
+    "gsk_",
+    "xai-",
 };
 
 /// Redacts sensitive API keys and tokens from text.
@@ -130,6 +136,15 @@ test "containsApiKey detects sk- prefix" {
 
 test "containsApiKey detects anthropic prefix" {
     try std.testing.expect(containsApiKey("anthropic-sk-ant-12345"));
+}
+
+test "containsApiKey detects additional provider prefixes" {
+    try std.testing.expect(containsApiKey("AIzaSyA1234567890abcdef")); // Google
+    try std.testing.expect(containsApiKey("AKIAIOSFODNN7EXAMPLE")); // AWS
+    try std.testing.expect(containsApiKey("msk-abc123")); // Mistral
+    try std.testing.expect(containsApiKey("co-abc123")); // Cohere
+    try std.testing.expect(containsApiKey("gsk_abc123")); // Groq
+    try std.testing.expect(containsApiKey("xai-abc123")); // xAI
 }
 
 test "containsApiKey returns false for normal text" {
