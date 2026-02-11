@@ -116,6 +116,28 @@ pub const JsonValue = union(enum) {
         return list.toOwnedSlice(allocator);
     }
 
+    /// Write a JSON-escaped string (with surrounding quotes) to a writer.
+    fn writeJsonString(writer: anytype, s: []const u8) !void {
+        try writer.writeByte('"');
+        for (s) |c| {
+            switch (c) {
+                '"' => try writer.writeAll("\\\""),
+                '\\' => try writer.writeAll("\\\\"),
+                '\n' => try writer.writeAll("\\n"),
+                '\r' => try writer.writeAll("\\r"),
+                '\t' => try writer.writeAll("\\t"),
+                else => {
+                    if (c < 0x20) {
+                        try writer.print("\\u{x:0>4}", .{c});
+                    } else {
+                        try writer.writeByte(c);
+                    }
+                },
+            }
+        }
+        try writer.writeByte('"');
+    }
+
     /// Write the JSON value to a writer.
     pub fn stringifyTo(self: Self, writer: anytype) !void {
         switch (self) {
@@ -123,26 +145,7 @@ pub const JsonValue = union(enum) {
             .bool => |b| try writer.writeAll(if (b) "true" else "false"),
             .integer => |i| try writer.print("{d}", .{i}),
             .float => |f| try writer.print("{d}", .{f}),
-            .string => |s| {
-                try writer.writeByte('"');
-                for (s) |c| {
-                    switch (c) {
-                        '"' => try writer.writeAll("\\\""),
-                        '\\' => try writer.writeAll("\\\\"),
-                        '\n' => try writer.writeAll("\\n"),
-                        '\r' => try writer.writeAll("\\r"),
-                        '\t' => try writer.writeAll("\\t"),
-                        else => {
-                            if (c < 0x20) {
-                                try writer.print("\\u{x:0>4}", .{c});
-                            } else {
-                                try writer.writeByte(c);
-                            }
-                        },
-                    }
-                }
-                try writer.writeByte('"');
-            },
+            .string => |s| try writeJsonString(writer, s),
             .array => |arr| {
                 try writer.writeByte('[');
                 for (arr, 0..) |item, i| {
@@ -158,10 +161,7 @@ pub const JsonValue = union(enum) {
                 while (iter.next()) |entry| {
                     if (!first) try writer.writeByte(',');
                     first = false;
-                    // Write key
-                    try writer.writeByte('"');
-                    try writer.writeAll(entry.key_ptr.*);
-                    try writer.writeByte('"');
+                    try writeJsonString(writer, entry.key_ptr.*);
                     try writer.writeByte(':');
                     try entry.value_ptr.stringifyTo(writer);
                 }
@@ -355,6 +355,24 @@ test "JsonValue parse and stringify" {
 
     const tags = value.get("tags").?.asArray().?;
     try std.testing.expectEqual(@as(usize, 2), tags.len);
+}
+
+test "JsonValue stringifyTo escapes object keys" {
+    const allocator = std.testing.allocator;
+    var obj = JsonObject.init(allocator);
+    defer obj.deinit();
+
+    try obj.put("normal", .{ .integer = 1 });
+    try obj.put("has\"quote", .{ .integer = 2 });
+    try obj.put("has\\backslash", .{ .integer = 3 });
+
+    const value = JsonValue{ .object = obj };
+    const result = try value.stringify(allocator);
+    defer allocator.free(result);
+
+    // Keys with special chars must be escaped
+    try std.testing.expect(std.mem.indexOf(u8, result, "has\\\"quote") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "has\\\\backslash") != null);
 }
 
 test "JsonValue null and primitives" {
