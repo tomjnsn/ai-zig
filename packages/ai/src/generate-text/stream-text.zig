@@ -351,6 +351,7 @@ pub fn streamText(
         .presence_penalty = if (options.settings.presence_penalty) |p| @as(f32, @floatCast(p)) else null,
         .frequency_penalty = if (options.settings.frequency_penalty) |f| @as(f32, @floatCast(f)) else null,
         .seed = if (options.settings.seed) |s| @as(i64, @intCast(s)) else null,
+        .error_diagnostic = options.error_diagnostic,
     };
 
     // Bridge: translate provider-level stream parts to ai-level

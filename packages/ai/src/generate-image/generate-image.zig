@@ -183,6 +183,7 @@ pub fn generateImage(
         .prompt = options.prompt,
         .n = options.n,
         .seed = if (options.seed) |s| @as(i64, @intCast(s)) else null,
+        .error_diagnostic = options.error_diagnostic,
     };
 
     // Call model.doGenerate

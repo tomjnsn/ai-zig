@@ -199,6 +199,7 @@ pub fn transcribe(
     const call_options = provider_types.TranscriptionModelV3CallOptions{
         .audio = audio_data,
         .media_type = media_type,
+        .error_diagnostic = options.error_diagnostic,
     };
 
     // Call model.doGenerate
