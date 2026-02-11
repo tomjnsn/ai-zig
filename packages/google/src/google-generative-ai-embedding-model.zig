@@ -284,7 +284,16 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
         );
 
         // Check for errors
-        if (response_ctx.response_error != null) {
+        if (response_ctx.response_error) |http_err| {
+            if (call_options.error_diagnostic) |diag| {
+                diag.provider = self.config.provider;
+                diag.kind = .network;
+                diag.setMessage(http_err.message);
+                if (http_err.status_code) |code| {
+                    diag.status_code = code;
+                    diag.classifyStatus();
+                }
+            }
             callback(callback_context, .{ .failure = error.HttpRequestFailed });
             return;
         }
