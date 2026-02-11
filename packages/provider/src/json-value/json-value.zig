@@ -29,18 +29,40 @@ pub const JsonValue = union(enum) {
             .float => |f| .{ .float = f },
             .string => |s| .{ .string = try allocator.dupe(u8, s) },
             .array => |arr| blk: {
-                var result = try allocator.alloc(JsonValue, arr.items.len);
+                const result = try allocator.alloc(JsonValue, arr.items.len);
+                var initialized: usize = 0;
+                errdefer {
+                    for (result[0..initialized]) |*item| {
+                        item.deinit(allocator);
+                    }
+                    allocator.free(result);
+                }
                 for (arr.items, 0..) |item, i| {
                     result[i] = try fromStdJson(allocator, item);
+                    initialized = i + 1;
                 }
                 break :blk .{ .array = result };
             },
             .object => |obj| blk: {
                 var result = JsonObject.init(allocator);
+                errdefer {
+                    var it = result.iterator();
+                    while (it.next()) |entry| {
+                        allocator.free(entry.key_ptr.*);
+                        var v = entry.value_ptr.*;
+                        v.deinit(allocator);
+                    }
+                    result.deinit();
+                }
                 var iter = obj.iterator();
                 while (iter.next()) |entry| {
                     const key = try allocator.dupe(u8, entry.key_ptr.*);
+                    errdefer allocator.free(key);
                     const val = try fromStdJson(allocator, entry.value_ptr.*);
+                    errdefer {
+                        var v = val;
+                        v.deinit(allocator);
+                    }
                     try result.put(key, val);
                 }
                 break :blk .{ .object = result };
@@ -251,18 +273,40 @@ pub const JsonValue = union(enum) {
             .float => |f| .{ .float = f },
             .string => |s| .{ .string = try allocator.dupe(u8, s) },
             .array => |arr| blk: {
-                var result = try allocator.alloc(JsonValue, arr.len);
+                const result = try allocator.alloc(JsonValue, arr.len);
+                var initialized: usize = 0;
+                errdefer {
+                    for (result[0..initialized]) |*item| {
+                        item.deinit(allocator);
+                    }
+                    allocator.free(result);
+                }
                 for (arr, 0..) |item, i| {
                     result[i] = try item.clone(allocator);
+                    initialized = i + 1;
                 }
                 break :blk .{ .array = result };
             },
             .object => |obj| blk: {
                 var result = JsonObject.init(allocator);
+                errdefer {
+                    var it = result.iterator();
+                    while (it.next()) |entry| {
+                        allocator.free(entry.key_ptr.*);
+                        var v = entry.value_ptr.*;
+                        v.deinit(allocator);
+                    }
+                    result.deinit();
+                }
                 var iter = obj.iterator();
                 while (iter.next()) |entry| {
                     const key = try allocator.dupe(u8, entry.key_ptr.*);
+                    errdefer allocator.free(key);
                     const val = try entry.value_ptr.clone(allocator);
+                    errdefer {
+                        var v = val;
+                        v.deinit(allocator);
+                    }
                     try result.put(key, val);
                 }
                 break :blk .{ .object = result };
