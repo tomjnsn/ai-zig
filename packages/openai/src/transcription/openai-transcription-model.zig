@@ -113,16 +113,16 @@ pub const OpenAITranscriptionModel = struct {
         const http_client = self.config.http_client orelse return error.NoHttpClient;
 
         // Build multipart form data
-        var form_parts = std.array_list.Managed(FormPart).init(request_allocator);
+        var form_parts = std.ArrayList(FormPart).empty;
 
         // Add model
-        try form_parts.append(.{
+        try form_parts.append(request_allocator, .{
             .name = "model",
             .value = .{ .text = self.model_id },
         });
 
         // Add file
-        try form_parts.append(.{
+        try form_parts.append(request_allocator, .{
             .name = "file",
             .value = .{ .binary = audio_binary },
             .filename = "audio.mp3",
@@ -130,7 +130,7 @@ pub const OpenAITranscriptionModel = struct {
         });
 
         // Add response format
-        try form_parts.append(.{
+        try form_parts.append(request_allocator, .{
             .name = "response_format",
             .value = .{ .text = response_format },
         });
@@ -139,7 +139,7 @@ pub const OpenAITranscriptionModel = struct {
         if (call_options.provider_options) |opts| {
             if (opts.get("language")) |lang_value| {
                 if (lang_value == .string) {
-                    try form_parts.append(.{
+                    try form_parts.append(request_allocator, .{
                         .name = "language",
                         .value = .{ .text = lang_value.string },
                     });
@@ -148,7 +148,7 @@ pub const OpenAITranscriptionModel = struct {
 
             if (opts.get("prompt")) |prompt_value| {
                 if (prompt_value == .string) {
-                    try form_parts.append(.{
+                    try form_parts.append(request_allocator, .{
                         .name = "prompt",
                         .value = .{ .text = prompt_value.string },
                     });
@@ -159,7 +159,7 @@ pub const OpenAITranscriptionModel = struct {
                 if (temp_value == .float) {
                     var temp_buf: [32]u8 = undefined;
                     const temp_str = std.fmt.bufPrint(&temp_buf, "{d}", .{temp_value.float}) catch "0";
-                    try form_parts.append(.{
+                    try form_parts.append(request_allocator, .{
                         .name = "temperature",
                         .value = .{ .text = temp_str },
                     });
@@ -302,8 +302,8 @@ const FormPart = struct {
 
 /// Build multipart form body
 fn buildMultipartBody(allocator: std.mem.Allocator, parts: []const FormPart, boundary: []const u8) ![]const u8 {
-    var buffer = std.array_list.Managed(u8).init(allocator);
-    const writer = buffer.writer();
+    var buffer = std.ArrayList(u8).empty;
+    const writer = buffer.writer(allocator);
 
     for (parts) |part| {
         try writer.print("--{s}\r\n", .{boundary});
@@ -330,7 +330,7 @@ fn buildMultipartBody(allocator: std.mem.Allocator, parts: []const FormPart, bou
 
     try writer.print("--{s}--\r\n", .{boundary});
 
-    return buffer.toOwnedSlice();
+    return buffer.toOwnedSlice(allocator);
 }
 
 test "OpenAITranscriptionModel basic" {

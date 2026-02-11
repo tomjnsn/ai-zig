@@ -29,7 +29,7 @@ pub fn prepareChatTools(
     allocator: std.mem.Allocator,
     options: PrepareToolsOptions,
 ) !PrepareToolsResult {
-    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
+    var warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
     // Convert tools
     var openai_tools: ?[]api.OpenAIChatRequest.Tool = null;
@@ -52,7 +52,7 @@ pub fn prepareChatTools(
                 },
                 .provider => |prov| {
                     // Provider tools are not directly supported in chat API
-                    try warnings.append(.{
+                    try warnings.append(allocator, .{
                         .other = .{
                             .message = try std.fmt.allocPrint(
                                 allocator,
@@ -92,7 +92,7 @@ pub fn prepareChatTools(
     return .{
         .tools = openai_tools,
         .tool_choice = openai_tool_choice,
-        .tool_warnings = try warnings.toOwnedSlice(),
+        .tool_warnings = try warnings.toOwnedSlice(allocator),
     };
 }
 

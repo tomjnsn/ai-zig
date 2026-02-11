@@ -227,8 +227,8 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).init(request_allocator);
-        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer()) catch |err| {
+        var body_buffer = std.ArrayList(u8).empty;
+        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer(request_allocator)) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -240,10 +240,10 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
         };
 
         // Convert headers to slice
-        var header_list = std.ArrayList(provider_utils.HttpHeader).init(request_allocator);
+        var header_list = std.ArrayList(provider_utils.HttpHeader).empty;
         var header_iter = headers.iterator();
         while (header_iter.next()) |entry| {
-            header_list.append(.{
+            header_list.append(request_allocator, .{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
             }) catch |err| {
@@ -295,7 +295,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
         };
 
         // Parse response and extract embeddings
-        var embed_list = std.ArrayList(embedding.EmbeddingModelV3Embedding).init(result_allocator);
+        var embed_list = std.ArrayList(embedding.EmbeddingModelV3Embedding).empty;
 
         if (values.len == 1) {
             // Parse single embedding response
@@ -311,7 +311,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                         callback(callback_context, .{ .failure = error.OutOfMemory });
                         return;
                     };
-                    embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch |err| {
+                    embed_list.append(result_allocator, .{ .embedding = .{ .float = values_copy } }) catch |err| {
                         callback(callback_context, .{ .failure = err });
                         return;
                     };
@@ -332,7 +332,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };
-                        embed_list.append(.{ .embedding = .{ .float = values_copy } }) catch |err| {
+                        embed_list.append(result_allocator, .{ .embedding = .{ .float = values_copy } }) catch |err| {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };
@@ -342,7 +342,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
         }
 
         const result = embedding.EmbeddingModelV3.EmbedSuccess{
-            .embeddings = embed_list.toOwnedSlice() catch &[_]embedding.EmbeddingModelV3Embedding{},
+            .embeddings = embed_list.toOwnedSlice(result_allocator) catch &[_]embedding.EmbeddingModelV3Embedding{},
             .usage = null,
             .warnings = &[_]shared.SharedV3Warning{},
         };

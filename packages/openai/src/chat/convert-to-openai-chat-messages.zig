@@ -32,19 +32,19 @@ pub fn convertToOpenAIChatMessages(
     allocator: std.mem.Allocator,
     options: ConvertOptions,
 ) !ConvertResult {
-    var messages = std.array_list.Managed(api.OpenAIChatRequest.RequestMessage).init(allocator);
-    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
+    var messages = std.ArrayList(api.OpenAIChatRequest.RequestMessage).empty;
+    var warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
     for (options.prompt) |msg| {
         const converted = try convertMessage(allocator, msg, options.system_message_mode, &warnings);
         if (converted) |m| {
-            try messages.append(m);
+            try messages.append(allocator, m);
         }
     }
 
     return .{
-        .messages = try messages.toOwnedSlice(),
-        .warnings = try warnings.toOwnedSlice(),
+        .messages = try messages.toOwnedSlice(allocator),
+        .warnings = try warnings.toOwnedSlice(allocator),
     };
 }
 
@@ -52,7 +52,7 @@ fn convertMessage(
     allocator: std.mem.Allocator,
     message: lm.LanguageModelV3Message,
     system_mode: ConvertOptions.SystemMessageMode,
-    warnings: *std.array_list.Managed(shared.SharedV3Warning),
+    warnings: *std.ArrayList(shared.SharedV3Warning),
 ) !?api.OpenAIChatRequest.RequestMessage {
     _ = warnings;
 
@@ -107,7 +107,7 @@ fn convertMessage(
         .assistant => {
             const parts = message.content.assistant;
             var text_content: ?[]const u8 = null;
-            var tool_calls = std.array_list.Managed(api.OpenAIChatResponse.ToolCall).init(allocator);
+            var tool_calls = std.ArrayList(api.OpenAIChatResponse.ToolCall).empty;
 
             for (parts) |part| {
                 switch (part) {
@@ -122,7 +122,7 @@ fn convertMessage(
                     .tool_call => |tc| {
                         // Stringify the JsonValue input
                         const input_str = try tc.input.stringify(allocator);
-                        try tool_calls.append(.{
+                        try tool_calls.append(allocator, .{
                             .id = tc.tool_call_id,
                             .type = "function",
                             .function = .{
@@ -138,7 +138,7 @@ fn convertMessage(
             return .{
                 .role = "assistant",
                 .content = if (text_content) |t| .{ .text = t } else null,
-                .tool_calls = if (tool_calls.items.len > 0) try tool_calls.toOwnedSlice() else null,
+                .tool_calls = if (tool_calls.items.len > 0) try tool_calls.toOwnedSlice(allocator) else null,
             };
         },
         .tool => {

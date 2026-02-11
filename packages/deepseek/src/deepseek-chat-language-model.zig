@@ -142,10 +142,10 @@ pub const DeepSeekChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "user" });
 
-                    var text_parts = std.ArrayList([]const u8).init(allocator);
+                    var text_parts = std.ArrayList([]const u8).empty;
                     for (msg.content.user) |part| {
                         switch (part) {
-                            .text => |t| try text_parts.append(t.text),
+                            .text => |t| try text_parts.append(allocator, t.text),
                             else => {},
                         }
                     }
@@ -158,12 +158,12 @@ pub const DeepSeekChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "assistant" });
 
-                    var text_content = std.ArrayList([]const u8).init(allocator);
+                    var text_content = std.ArrayList([]const u8).empty;
                     var tool_calls = std.json.Array.init(allocator);
 
                     for (msg.content.assistant) |part| {
                         switch (part) {
-                            .text => |t| try text_content.append(t.text),
+                            .text => |t| try text_content.append(allocator, t.text),
                             .tool_call => |tc| {
                                 var tool_call = std.json.ObjectMap.init(allocator);
                                 try tool_call.put("id", .{ .string = tc.tool_call_id });
@@ -267,7 +267,6 @@ pub const DeepSeekChatLanguageModel = struct {
         ctx: ?*anyopaque,
     ) void {
         _ = self;
-        _ = allocator;
         callback(ctx, .{ .success = std.StringHashMap([]const []const u8).init(allocator) });
     }
 

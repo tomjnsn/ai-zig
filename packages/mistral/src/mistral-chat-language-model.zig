@@ -77,8 +77,8 @@ pub const MistralChatLanguageModel = struct {
         }
 
         // Serialize request body
-        var body_buffer = std.array_list.Managed(u8).init(request_allocator);
-        std.json.stringify(request_body, .{}, body_buffer.writer()) catch |err| {
+        var body_buffer = std.ArrayList(u8).empty;
+        std.json.stringify(request_body, .{}, body_buffer.writer(request_allocator)) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -99,10 +99,10 @@ pub const MistralChatLanguageModel = struct {
             callback(callback_context, .{ .failure = err });
             return;
         };
-        var header_list = std.array_list.Managed(provider_utils.HttpClient.Header).init(request_allocator);
+        var header_list = std.ArrayList(provider_utils.HttpClient.Header).empty;
         var header_iter = headers.iterator();
         while (header_iter.next()) |entry| {
-            header_list.append(.{
+            header_list.append(request_allocator, .{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
             }) catch |err| {
@@ -159,14 +159,14 @@ pub const MistralChatLanguageModel = struct {
         const root = parsed.value;
 
         // Extract content from choices[0].message.content
-        var content_list = std.array_list.Managed(lm.LanguageModelV3Content).init(result_allocator);
+        var content_list = std.ArrayList(lm.LanguageModelV3Content).empty;
         if (root.object.get("choices")) |choices_val| {
             if (choices_val.array.items.len > 0) {
                 const choice = choices_val.array.items[0];
                 if (choice.object.get("message")) |message| {
                     if (message.object.get("content")) |content_val| {
                         if (content_val == .string) {
-                            content_list.append(.{ .text = .{ .text = content_val.string } }) catch {};
+                            content_list.append(result_allocator, .{ .text = .{ .text = content_val.string } }) catch {};
                         }
                     }
                 }
@@ -199,7 +199,7 @@ pub const MistralChatLanguageModel = struct {
         }
 
         callback(callback_context, .{ .success = .{
-            .content = content_list.toOwnedSlice() catch &[_]lm.LanguageModelV3Content{},
+            .content = content_list.toOwnedSlice(result_allocator) catch &[_]lm.LanguageModelV3Content{},
             .finish_reason = finish_reason,
             .usage = lm.LanguageModelV3Usage.initWithTotals(input_tokens, output_tokens),
         } });
@@ -213,7 +213,7 @@ pub const MistralChatLanguageModel = struct {
         is_text_active: bool = false,
         finish_reason: lm.LanguageModelV3FinishReason = .unknown,
         usage: lm.LanguageModelV3Usage = lm.LanguageModelV3Usage.init(),
-        partial_line: std.array_list.Managed(u8),
+        partial_line: std.ArrayList(u8),
 
         fn init(
             callbacks: lm.LanguageModelV3.StreamCallbacks,
@@ -224,12 +224,12 @@ pub const MistralChatLanguageModel = struct {
                 .callbacks = callbacks,
                 .result_allocator = result_allocator,
                 .request_allocator = request_allocator,
-                .partial_line = std.array_list.Managed(u8).init(request_allocator),
+                .partial_line = std.ArrayList(u8).empty,
             };
         }
 
         fn processChunk(self: *StreamState, chunk: []const u8) void {
-            self.partial_line.appendSlice(chunk) catch return;
+            self.partial_line.appendSlice(self.request_allocator, chunk) catch return;
 
             while (std.mem.indexOf(u8, self.partial_line.items, "\n")) |newline_pos| {
                 const line = self.partial_line.items[0..newline_pos];
@@ -372,8 +372,8 @@ pub const MistralChatLanguageModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.array_list.Managed(u8).init(request_allocator);
-        std.json.stringify(request_body, .{}, body_buffer.writer()) catch |err| {
+        var body_buffer = std.ArrayList(u8).empty;
+        std.json.stringify(request_body, .{}, body_buffer.writer(request_allocator)) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
             arena.deinit();
             return;
@@ -394,10 +394,10 @@ pub const MistralChatLanguageModel = struct {
         };
 
         // Convert headers to slice
-        var header_list = std.array_list.Managed(provider_utils.HttpClient.Header).init(request_allocator);
+        var header_list = std.ArrayList(provider_utils.HttpClient.Header).empty;
         var header_iter = headers.iterator();
         while (header_iter.next()) |entry| {
-            header_list.append(.{
+            header_list.append(request_allocator, .{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
             }) catch |err| {
@@ -522,10 +522,10 @@ pub const MistralChatLanguageModel = struct {
                         try message.put("content", .{ .array = content });
                     } else {
                         // Simple text content
-                        var text_parts = std.array_list.Managed([]const u8).init(allocator);
+                        var text_parts = std.ArrayList([]const u8).empty;
                         for (msg.content.user) |part| {
                             switch (part) {
-                                .text => |t| try text_parts.append(t.text),
+                                .text => |t| try text_parts.append(allocator, t.text),
                                 else => {},
                             }
                         }
@@ -539,12 +539,12 @@ pub const MistralChatLanguageModel = struct {
                     var message = std.json.ObjectMap.init(allocator);
                     try message.put("role", .{ .string = "assistant" });
 
-                    var text_content = std.array_list.Managed([]const u8).init(allocator);
+                    var text_content = std.ArrayList([]const u8).empty;
                     var tool_calls = std.json.Array.init(allocator);
 
                     for (msg.content.assistant) |part| {
                         switch (part) {
-                            .text => |t| try text_content.append(t.text),
+                            .text => |t| try text_content.append(allocator, t.text),
                             .tool_call => |tc| {
                                 var tool_call = std.json.ObjectMap.init(allocator);
                                 try tool_call.put("id", .{ .string = tc.tool_call_id });

@@ -98,7 +98,7 @@ pub fn prepareTools(
     tool_choice: ?lm.LanguageModelV3ToolChoice,
     model_id: []const u8,
 ) !PrepareToolsResult {
-    var warnings = std.array_list.Managed(shared.SharedV3Warning).init(allocator);
+    var warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
     // Check for empty tools array
     if (tools == null or tools.?.len == 0) {
@@ -126,7 +126,7 @@ pub fn prepareTools(
     }
 
     if (has_function_tools and has_provider_tools) {
-        try warnings.append(.{
+        try warnings.append(allocator, .{
             .unsupported = .{
                 .feature = "combination of function and provider-defined tools",
             },
@@ -135,30 +135,30 @@ pub fn prepareTools(
 
     // Handle provider tools
     if (has_provider_tools) {
-        var provider_tools = std.array_list.Managed(ProviderTool).init(allocator);
+        var provider_tools = std.ArrayList(ProviderTool).empty;
 
         for (tools_list) |tool| {
             switch (tool) {
                 .provider => |prov| {
                     if (std.mem.eql(u8, prov.name, "google.google_search")) {
                         if (is_gemini_2_or_newer) {
-                            try provider_tools.append(.{ .google_search = .{} });
+                            try provider_tools.append(allocator, .{ .google_search = .{} });
                         } else if (supports_dynamic_retrieval) {
-                            try provider_tools.append(.{
+                            try provider_tools.append(allocator, .{
                                 .google_search_retrieval = .{
                                     .dynamic_retrieval_config = .{},
                                 },
                             });
                         } else {
-                            try provider_tools.append(.{
+                            try provider_tools.append(allocator, .{
                                 .google_search_retrieval = .{},
                             });
                         }
                     } else if (std.mem.eql(u8, prov.name, "google.enterprise_web_search")) {
                         if (is_gemini_2_or_newer) {
-                            try provider_tools.append(.{ .enterprise_web_search = .{} });
+                            try provider_tools.append(allocator, .{ .enterprise_web_search = .{} });
                         } else {
-                            try warnings.append(.{
+                            try warnings.append(allocator, .{
                                 .unsupported = .{
                                     .feature = "provider-defined tool google.enterprise_web_search requires Gemini 2.0 or newer",
                                 },
@@ -166,9 +166,9 @@ pub fn prepareTools(
                         }
                     } else if (std.mem.eql(u8, prov.name, "google.url_context")) {
                         if (is_gemini_2_or_newer) {
-                            try provider_tools.append(.{ .url_context = .{} });
+                            try provider_tools.append(allocator, .{ .url_context = .{} });
                         } else {
-                            try warnings.append(.{
+                            try warnings.append(allocator, .{
                                 .unsupported = .{
                                     .feature = "provider-defined tool google.url_context requires Gemini 2.0 or newer",
                                 },
@@ -176,9 +176,9 @@ pub fn prepareTools(
                         }
                     } else if (std.mem.eql(u8, prov.name, "google.code_execution")) {
                         if (is_gemini_2_or_newer) {
-                            try provider_tools.append(.{ .code_execution = .{} });
+                            try provider_tools.append(allocator, .{ .code_execution = .{} });
                         } else {
-                            try warnings.append(.{
+                            try warnings.append(allocator, .{
                                 .unsupported = .{
                                     .feature = "provider-defined tool google.code_execution requires Gemini 2.0 or newer",
                                 },
@@ -186,9 +186,9 @@ pub fn prepareTools(
                         }
                     } else if (std.mem.eql(u8, prov.name, "google.file_search")) {
                         if (supports_file_search) {
-                            try provider_tools.append(.{ .file_search = .{} });
+                            try provider_tools.append(allocator, .{ .file_search = .{} });
                         } else {
-                            try warnings.append(.{
+                            try warnings.append(allocator, .{
                                 .unsupported = .{
                                     .feature = "provider-defined tool google.file_search requires Gemini 2.5 models",
                                 },
@@ -196,16 +196,16 @@ pub fn prepareTools(
                         }
                     } else if (std.mem.eql(u8, prov.name, "google.google_maps")) {
                         if (is_gemini_2_or_newer) {
-                            try provider_tools.append(.{ .google_maps = .{} });
+                            try provider_tools.append(allocator, .{ .google_maps = .{} });
                         } else {
-                            try warnings.append(.{
+                            try warnings.append(allocator, .{
                                 .unsupported = .{
                                     .feature = "provider-defined tool google.google_maps requires Gemini 2.0 or newer",
                                 },
                             });
                         }
                     } else {
-                        try warnings.append(.{
+                        try warnings.append(allocator, .{
                             .unsupported = .{
                                 .feature = try std.fmt.allocPrint(
                                     allocator,
@@ -224,28 +224,28 @@ pub fn prepareTools(
         return .{
             .function_declarations = null,
             .provider_tools = if (provider_tools.items.len > 0)
-                try provider_tools.toOwnedSlice()
+                try provider_tools.toOwnedSlice(allocator)
             else
                 null,
             .tool_config = null,
-            .tool_warnings = try warnings.toOwnedSlice(),
+            .tool_warnings = try warnings.toOwnedSlice(allocator),
         };
     }
 
     // Handle function tools
-    var function_declarations = std.array_list.Managed(FunctionDeclaration).init(allocator);
+    var function_declarations = std.ArrayList(FunctionDeclaration).empty;
 
     for (tools_list) |tool| {
         switch (tool) {
             .function => |func| {
-                try function_declarations.append(.{
+                try function_declarations.append(allocator, .{
                     .name = func.name,
                     .description = func.description orelse "",
                     .parameters = func.input_schema,
                 });
             },
             .provider => {
-                try warnings.append(.{
+                try warnings.append(allocator, .{
                     .unsupported = .{
                         .feature = "provider tool in function tools context",
                     },
@@ -278,12 +278,12 @@ pub fn prepareTools(
 
     return .{
         .function_declarations = if (function_declarations.items.len > 0)
-            try function_declarations.toOwnedSlice()
+            try function_declarations.toOwnedSlice(allocator)
         else
             null,
         .provider_tools = null,
         .tool_config = tool_config,
-        .tool_warnings = try warnings.toOwnedSlice(),
+        .tool_warnings = try warnings.toOwnedSlice(allocator),
     };
 }
 

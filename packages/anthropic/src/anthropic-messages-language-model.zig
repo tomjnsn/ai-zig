@@ -77,20 +77,20 @@ pub const AnthropicMessagesLanguageModel = struct {
         result_allocator: std.mem.Allocator,
         call_options: lm.LanguageModelV3CallOptions,
     ) !GenerateResultOk {
-        var all_warnings = std.array_list.Managed(shared.SharedV3Warning).init(request_allocator);
+        var all_warnings = std.ArrayList(shared.SharedV3Warning).empty;
         var all_betas = std.StringHashMap(void).init(request_allocator);
 
         // Check for unsupported features
         if (call_options.frequency_penalty != null) {
-            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("frequencyPenalty", null));
+            try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("frequencyPenalty", null));
         }
 
         if (call_options.presence_penalty != null) {
-            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("presencePenalty", null));
+            try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("presencePenalty", null));
         }
 
         if (call_options.seed != null) {
-            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("seed", null));
+            try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("seed", null));
         }
 
         // Clamp temperature
@@ -98,10 +98,10 @@ pub const AnthropicMessagesLanguageModel = struct {
         if (temperature) |t| {
             if (t > 1.0) {
                 temperature = 1.0;
-                try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("temperature", "Temperature exceeds anthropic maximum of 1.0, clamped to 1.0"));
+                try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("temperature", "Temperature exceeds anthropic maximum of 1.0, clamped to 1.0"));
             } else if (t < 0.0) {
                 temperature = 0.0;
-                try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("temperature", "Temperature below anthropic minimum of 0, clamped to 0"));
+                try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("temperature", "Temperature below anthropic minimum of 0, clamped to 0"));
             }
         }
 
@@ -116,7 +116,7 @@ pub const AnthropicMessagesLanguageModel = struct {
             .prompt = call_options.prompt,
             .send_reasoning = true,
         });
-        try all_warnings.appendSlice(convert_result.warnings);
+        try all_warnings.appendSlice(request_allocator, convert_result.warnings);
 
         // Merge betas from message conversion
         var beta_iter = convert_result.betas.iterator();
@@ -129,7 +129,7 @@ pub const AnthropicMessagesLanguageModel = struct {
             .tools = call_options.tools,
             .tool_choice = call_options.tool_choice,
         });
-        try all_warnings.appendSlice(tools_result.tool_warnings);
+        try all_warnings.appendSlice(request_allocator, tools_result.tool_warnings);
 
         // Merge betas from tools
         var tools_beta_iter = tools_result.betas.iterator();
@@ -160,17 +160,17 @@ pub const AnthropicMessagesLanguageModel = struct {
 
         // Add beta header if needed
         if (all_betas.count() > 0) {
-            var beta_list = std.array_list.Managed(u8).init(request_allocator);
+            var beta_list = std.ArrayList(u8).empty;
             var iter = all_betas.iterator();
             var first = true;
             while (iter.next()) |entry| {
                 if (!first) {
-                    try beta_list.appendSlice(",");
+                    try beta_list.appendSlice(request_allocator, ",");
                 }
-                try beta_list.appendSlice(entry.key_ptr.*);
+                try beta_list.appendSlice(request_allocator, entry.key_ptr.*);
                 first = false;
             }
-            try headers.put("anthropic-beta", try beta_list.toOwnedSlice());
+            try headers.put("anthropic-beta", try beta_list.toOwnedSlice(request_allocator));
         }
 
         if (call_options.headers) |user_headers| {
@@ -210,34 +210,34 @@ pub const AnthropicMessagesLanguageModel = struct {
         const response = parsed.value;
 
         // Extract content
-        var content = std.array_list.Managed(lm.LanguageModelV3Content).init(result_allocator);
+        var content = std.ArrayList(lm.LanguageModelV3Content).empty;
 
         for (response.content) |block| {
             switch (block) {
                 .text => |text| {
                     const text_copy = try result_allocator.dupe(u8, text.text);
-                    try content.append(.{
+                    try content.append(result_allocator, .{
                         .text = .{
                             .text = text_copy,
                         },
                     });
                 },
                 .thinking => |thinking| {
-                    try content.append(.{
+                    try content.append(result_allocator, .{
                         .reasoning = .{
                             .text = try result_allocator.dupe(u8, thinking.thinking),
                         },
                     });
                 },
                 .redacted_thinking => |_| {
-                    try content.append(.{
+                    try content.append(result_allocator, .{
                         .reasoning = .{
                             .text = "",
                         },
                     });
                 },
                 .tool_use => |tc| {
-                    try content.append(.{
+                    try content.append(result_allocator, .{
                         .tool_call = .{
                             .tool_call_id = try result_allocator.dupe(u8, tc.id),
                             .tool_name = try result_allocator.dupe(u8, tc.name),
@@ -246,7 +246,7 @@ pub const AnthropicMessagesLanguageModel = struct {
                     });
                 },
                 .server_tool_use => |tc| {
-                    try content.append(.{
+                    try content.append(result_allocator, .{
                         .tool_call = .{
                             .tool_call_id = try result_allocator.dupe(u8, tc.id),
                             .tool_name = try result_allocator.dupe(u8, tc.name),
@@ -271,7 +271,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         }
 
         return .{
-            .content = try content.toOwnedSlice(),
+            .content = try content.toOwnedSlice(result_allocator),
             .finish_reason = finish_reason,
             .usage = usage,
             .warnings = result_warnings,
@@ -304,17 +304,17 @@ pub const AnthropicMessagesLanguageModel = struct {
         call_options: lm.LanguageModelV3CallOptions,
         callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) !void {
-        var all_warnings = std.array_list.Managed(shared.SharedV3Warning).init(request_allocator);
+        var all_warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
         // Check for unsupported features (same as doGenerate)
         if (call_options.frequency_penalty != null) {
-            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("frequencyPenalty", null));
+            try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("frequencyPenalty", null));
         }
         if (call_options.presence_penalty != null) {
-            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("presencePenalty", null));
+            try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("presencePenalty", null));
         }
         if (call_options.seed != null) {
-            try all_warnings.append(shared.SharedV3Warning.unsupportedFeature("seed", null));
+            try all_warnings.append(request_allocator, shared.SharedV3Warning.unsupportedFeature("seed", null));
         }
 
         // Clamp temperature
@@ -333,14 +333,14 @@ pub const AnthropicMessagesLanguageModel = struct {
             .prompt = call_options.prompt,
             .send_reasoning = true,
         });
-        try all_warnings.appendSlice(convert_result.warnings);
+        try all_warnings.appendSlice(request_allocator, convert_result.warnings);
 
         // Prepare tools
         const tools_result = try prepare_tools.prepareTools(request_allocator, .{
             .tools = call_options.tools,
             .tool_choice = call_options.tool_choice,
         });
-        try all_warnings.appendSlice(tools_result.tool_warnings);
+        try all_warnings.appendSlice(request_allocator, tools_result.tool_warnings);
 
         // Emit stream start
         const warnings_copy = try result_allocator.alloc(shared.SharedV3Warning, all_warnings.items.len);
@@ -561,7 +561,7 @@ const StreamState = struct {
                     .text => {
                         try self.content_blocks.put(index, .{
                             .block_type = .text,
-                            .input = std.array_list.Managed(u8).init(self.result_allocator),
+                            .input = std.ArrayList(u8).empty,
                         });
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .text_start = .{ .id = try std.fmt.allocPrint(self.result_allocator, "{d}", .{index}) },
@@ -570,7 +570,7 @@ const StreamState = struct {
                     .thinking => {
                         try self.content_blocks.put(index, .{
                             .block_type = .thinking,
-                            .input = std.array_list.Managed(u8).init(self.result_allocator),
+                            .input = std.ArrayList(u8).empty,
                         });
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .reasoning_start = .{ .id = try std.fmt.allocPrint(self.result_allocator, "{d}", .{index}) },
@@ -581,7 +581,7 @@ const StreamState = struct {
                             .block_type = .tool_use,
                             .tool_call_id = tu.id,
                             .tool_name = tu.name,
-                            .input = std.array_list.Managed(u8).init(self.result_allocator),
+                            .input = std.ArrayList(u8).empty,
                         });
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_input_start = .{
@@ -706,9 +706,9 @@ const StreamState = struct {
 
 /// Serialize request to JSON
 fn serializeRequest(allocator: std.mem.Allocator, request: api.AnthropicMessagesRequest) ![]const u8 {
-    var buffer = std.array_list.Managed(u8).init(allocator);
-    try std.json.stringify(request, .{}, buffer.writer());
-    return buffer.toOwnedSlice();
+    var buffer = std.ArrayList(u8).empty;
+    try std.json.stringify(request, .{}, buffer.writer(allocator));
+    return buffer.toOwnedSlice(allocator);
 }
 
 test "AnthropicMessagesLanguageModel basic" {

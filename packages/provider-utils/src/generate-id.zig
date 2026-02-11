@@ -175,16 +175,16 @@ test "IdGenerator uniqueness" {
 
     var generator = createIdGenerator();
 
-    var ids = std.array_list.Managed([]u8).init(allocator);
+    var ids = std.ArrayList([]u8).empty;
     defer {
         for (ids.items) |id| allocator.free(id);
-        ids.deinit();
+        ids.deinit(allocator);
     }
 
     // Generate multiple IDs and verify they're unique
     for (0..100) |_| {
         const id = try generator.generate(allocator);
-        try ids.append(id);
+        try ids.append(allocator, id);
     }
 
     // Check uniqueness

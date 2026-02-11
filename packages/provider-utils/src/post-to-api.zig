@@ -65,11 +65,11 @@ pub fn postJsonToApi(
     };
 
     // Build headers list
-    var headers_list = std.array_list.Managed(http_client.HttpClient.Header).init(allocator);
-    defer headers_list.deinit();
+    var headers_list = std.ArrayList(http_client.HttpClient.Header).empty;
+    defer headers_list.deinit(allocator);
 
     // Add Content-Type header
-    headers_list.append(.{
+    headers_list.append(allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     }) catch {
@@ -86,7 +86,7 @@ pub fn postJsonToApi(
     // Add custom headers
     if (options.headers) |custom_headers| {
         for (custom_headers) |h| {
-            headers_list.append(h) catch {
+            headers_list.append(allocator, h) catch {
                 allocator.free(body);
                 callbacks.on_error(callbacks.ctx, .{
                     .info = errors.ApiCallError.init(.{
@@ -208,13 +208,13 @@ pub fn postToApi(
     callbacks: ApiCallbacks,
 ) void {
     // Build headers list
-    var headers_list = std.array_list.Managed(http_client.HttpClient.Header).init(allocator);
-    defer headers_list.deinit();
+    var headers_list = std.ArrayList(http_client.HttpClient.Header).empty;
+    defer headers_list.deinit(allocator);
 
     // Add custom headers
     if (options.headers) |custom_headers| {
         for (custom_headers) |h| {
-            headers_list.append(h) catch {
+            headers_list.append(allocator, h) catch {
                 callbacks.on_error(callbacks.ctx, .{
                     .info = errors.ApiCallError.init(.{
                         .message = "Failed to append header to request",
@@ -344,11 +344,11 @@ pub fn postJsonToApiStreaming(
     };
 
     // Build headers list
-    var headers_list = std.array_list.Managed(http_client.HttpClient.Header).init(allocator);
-    defer headers_list.deinit();
+    var headers_list = std.ArrayList(http_client.HttpClient.Header).empty;
+    defer headers_list.deinit(allocator);
 
     // Add Content-Type header
-    headers_list.append(.{
+    headers_list.append(allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     }) catch {
@@ -365,7 +365,7 @@ pub fn postJsonToApiStreaming(
     // Add custom headers
     if (options.headers) |custom_headers| {
         for (custom_headers) |h| {
-            headers_list.append(h) catch {
+            headers_list.append(allocator, h) catch {
                 allocator.free(body);
                 callbacks.on_error(callbacks.ctx, .{
                     .info = errors.ApiCallError.init(.{

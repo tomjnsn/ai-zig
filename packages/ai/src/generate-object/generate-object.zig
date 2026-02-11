@@ -134,8 +134,8 @@ pub fn generateObject(
     }
 
     // Build system prompt with schema instructions
-    var system_parts = std.array_list.Managed(u8).init(arena_allocator);
-    const writer = system_parts.writer();
+    var system_parts = std.ArrayList(u8).empty;
+    const writer = system_parts.writer(arena_allocator);
 
     if (options.system) |sys| {
         writer.writeAll(sys) catch return GenerateObjectError.OutOfMemory;
@@ -149,15 +149,15 @@ pub fn generateObject(
     writer.writeAll(schema_json) catch return GenerateObjectError.OutOfMemory;
 
     // Build prompt messages for the model
-    var prompt_msgs = std.array_list.Managed(provider_types.LanguageModelV3Message).init(arena_allocator);
+    var prompt_msgs = std.ArrayList(provider_types.LanguageModelV3Message).empty;
 
     // Add system message with schema instructions
-    prompt_msgs.append(provider_types.language_model.systemMessage(system_parts.items)) catch return GenerateObjectError.OutOfMemory;
+    prompt_msgs.append(arena_allocator, provider_types.language_model.systemMessage(system_parts.items)) catch return GenerateObjectError.OutOfMemory;
 
     // Add user message
     if (options.prompt) |prompt| {
         const msg = provider_types.language_model.userTextMessage(arena_allocator, prompt) catch return GenerateObjectError.OutOfMemory;
-        prompt_msgs.append(msg) catch return GenerateObjectError.OutOfMemory;
+        prompt_msgs.append(arena_allocator, msg) catch return GenerateObjectError.OutOfMemory;
     }
 
     // Build call options

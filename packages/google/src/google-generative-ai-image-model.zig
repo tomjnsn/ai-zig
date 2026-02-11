@@ -68,7 +68,7 @@ pub const GoogleGenerativeAIImageModel = struct {
         defer arena.deinit();
         const request_allocator = arena.allocator();
 
-        var warnings = std.ArrayList(shared.SharedV3Warning).init(request_allocator);
+        var warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
         // Check for unsupported features
         if (call_options.files != null and call_options.files.?.len > 0) {
@@ -82,7 +82,7 @@ pub const GoogleGenerativeAIImageModel = struct {
         }
 
         if (call_options.size != null) {
-            warnings.append(.{
+            warnings.append(request_allocator, .{
                 .type = .unsupported,
                 .message = "size option not supported, use aspectRatio instead",
             }) catch |err| {
@@ -92,7 +92,7 @@ pub const GoogleGenerativeAIImageModel = struct {
         }
 
         if (call_options.seed != null) {
-            warnings.append(.{
+            warnings.append(request_allocator, .{
                 .type = .unsupported,
                 .message = "seed option not supported through this provider",
             }) catch |err| {
@@ -184,8 +184,8 @@ pub const GoogleGenerativeAIImageModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).init(request_allocator);
-        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer()) catch |err| {
+        var body_buffer = std.ArrayList(u8).empty;
+        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer(request_allocator)) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -197,10 +197,10 @@ pub const GoogleGenerativeAIImageModel = struct {
         };
 
         // Convert headers to slice
-        var header_list = std.ArrayList(provider_utils.HttpHeader).init(request_allocator);
+        var header_list = std.ArrayList(provider_utils.HttpHeader).empty;
         var header_iter = headers.iterator();
         while (header_iter.next()) |entry| {
-            header_list.append(.{
+            header_list.append(request_allocator, .{
                 .name = entry.key_ptr.*,
                 .value = entry.value_ptr.*,
             }) catch |err| {
@@ -259,7 +259,7 @@ pub const GoogleGenerativeAIImageModel = struct {
         const response = parsed.value;
 
         // Extract images from response
-        var images_list = std.ArrayList([]const u8).init(result_allocator);
+        var images_list = std.ArrayList([]const u8).empty;
         if (response.predictions) |predictions| {
             for (predictions) |pred| {
                 if (pred.bytesBase64Encoded) |b64| {
@@ -267,7 +267,7 @@ pub const GoogleGenerativeAIImageModel = struct {
                         callback(callback_context, .{ .failure = err });
                         return;
                     };
-                    images_list.append(b64_copy) catch |err| {
+                    images_list.append(result_allocator, b64_copy) catch |err| {
                         callback(callback_context, .{ .failure = err });
                         return;
                     };
@@ -276,8 +276,8 @@ pub const GoogleGenerativeAIImageModel = struct {
         }
 
         const result = image.ImageModelV3.GenerateSuccess{
-            .images = .{ .base64 = images_list.toOwnedSlice() catch &[_][]const u8{} },
-            .warnings = warnings.toOwnedSlice() catch &[_]shared.SharedV3Warning{},
+            .images = .{ .base64 = images_list.toOwnedSlice(result_allocator) catch &[_][]const u8{} },
+            .warnings = warnings.toOwnedSlice(request_allocator) catch &[_]shared.SharedV3Warning{},
             .response = .{
                 .timestamp = std.time.milliTimestamp(),
                 .model_id = self.model_id,

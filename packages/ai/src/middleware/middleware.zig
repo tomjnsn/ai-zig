@@ -92,30 +92,30 @@ pub const MiddlewareContext = struct {
 /// Middleware chain for processing requests/responses
 pub const MiddlewareChain = struct {
     allocator: std.mem.Allocator,
-    request_middleware: std.array_list.Managed(RequestMiddleware),
-    response_middleware: std.array_list.Managed(ResponseMiddleware),
+    request_middleware: std.ArrayList(RequestMiddleware),
+    response_middleware: std.ArrayList(ResponseMiddleware),
 
     pub fn init(allocator: std.mem.Allocator) MiddlewareChain {
         return .{
             .allocator = allocator,
-            .request_middleware = std.array_list.Managed(RequestMiddleware).init(allocator),
-            .response_middleware = std.array_list.Managed(ResponseMiddleware).init(allocator),
+            .request_middleware = std.ArrayList(RequestMiddleware).empty,
+            .response_middleware = std.ArrayList(ResponseMiddleware).empty,
         };
     }
 
     pub fn deinit(self: *MiddlewareChain) void {
-        self.request_middleware.deinit();
-        self.response_middleware.deinit();
+        self.request_middleware.deinit(self.allocator);
+        self.response_middleware.deinit(self.allocator);
     }
 
     /// Add request middleware
     pub fn useRequest(self: *MiddlewareChain, middleware: RequestMiddleware) !void {
-        try self.request_middleware.append(middleware);
+        try self.request_middleware.append(self.allocator, middleware);
     }
 
     /// Add response middleware
     pub fn useResponse(self: *MiddlewareChain, middleware: ResponseMiddleware) !void {
-        try self.response_middleware.append(middleware);
+        try self.response_middleware.append(self.allocator, middleware);
     }
 
     /// Process request through all middleware

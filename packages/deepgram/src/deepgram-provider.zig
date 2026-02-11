@@ -81,8 +81,8 @@ pub const DeepgramTranscriptionModel = struct {
         self: *const Self,
         options: TranscriptionOptions,
     ) ![]const u8 {
-        var params = std.array_list.Managed(u8).init(self.allocator);
-        var writer = params.writer();
+        var params = std.ArrayList(u8).empty;
+        var writer = params.writer(self.allocator);
 
         try writer.print("model={s}", .{self.model_id});
 
@@ -164,7 +164,7 @@ pub const DeepgramTranscriptionModel = struct {
             try writer.print("&intents={}", .{i});
         }
 
-        return params.toOwnedSlice();
+        return params.toOwnedSlice(self.allocator);
     }
 };
 

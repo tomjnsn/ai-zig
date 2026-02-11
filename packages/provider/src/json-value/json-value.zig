@@ -88,10 +88,10 @@ pub const JsonValue = union(enum) {
 
     /// Stringify the JSON value.
     pub fn stringify(self: Self, allocator: std.mem.Allocator) ![]const u8 {
-        var list = std.array_list.Managed(u8).init(allocator);
-        errdefer list.deinit();
-        try self.stringifyTo(list.writer());
-        return list.toOwnedSlice();
+        var list = std.ArrayList(u8).empty;
+        errdefer list.deinit(allocator);
+        try self.stringifyTo(list.writer(allocator));
+        return list.toOwnedSlice(allocator);
     }
 
     /// Write the JSON value to a writer.

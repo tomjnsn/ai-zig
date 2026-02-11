@@ -149,19 +149,19 @@ pub const StreamTextResult = struct {
     options: StreamTextOptions,
 
     /// The accumulated text so far
-    text: std.array_list.Managed(u8),
+    text: std.ArrayList(u8),
 
     /// The accumulated reasoning text
-    reasoning_text: std.array_list.Managed(u8),
+    reasoning_text: std.ArrayList(u8),
 
     /// Tool calls collected
-    tool_calls: std.array_list.Managed(ToolCall),
+    tool_calls: std.ArrayList(ToolCall),
 
     /// Tool results collected
-    tool_results: std.array_list.Managed(ToolResult),
+    tool_results: std.ArrayList(ToolResult),
 
     /// Steps completed
-    steps: std.array_list.Managed(StepResult),
+    steps: std.ArrayList(StepResult),
 
     /// Current finish reason
     finish_reason: ?FinishReason = null,
@@ -182,20 +182,20 @@ pub const StreamTextResult = struct {
         return .{
             .allocator = allocator,
             .options = options,
-            .text = std.array_list.Managed(u8).init(allocator),
-            .reasoning_text = std.array_list.Managed(u8).init(allocator),
-            .tool_calls = std.array_list.Managed(ToolCall).init(allocator),
-            .tool_results = std.array_list.Managed(ToolResult).init(allocator),
-            .steps = std.array_list.Managed(StepResult).init(allocator),
+            .text = std.ArrayList(u8).empty,
+            .reasoning_text = std.ArrayList(u8).empty,
+            .tool_calls = std.ArrayList(ToolCall).empty,
+            .tool_results = std.ArrayList(ToolResult).empty,
+            .steps = std.ArrayList(StepResult).empty,
         };
     }
 
     pub fn deinit(self: *StreamTextResult) void {
-        self.text.deinit();
-        self.reasoning_text.deinit();
-        self.tool_calls.deinit();
-        self.tool_results.deinit();
-        self.steps.deinit();
+        self.text.deinit(self.allocator);
+        self.reasoning_text.deinit(self.allocator);
+        self.tool_calls.deinit(self.allocator);
+        self.tool_results.deinit(self.allocator);
+        self.steps.deinit(self.allocator);
     }
 
     /// Get the accumulated text
@@ -232,16 +232,16 @@ pub const StreamTextResult = struct {
     pub fn processPart(self: *StreamTextResult, part: StreamPart) !void {
         switch (part) {
             .text_delta => |delta| {
-                try self.text.appendSlice(delta.text);
+                try self.text.appendSlice(self.allocator, delta.text);
             },
             .reasoning_delta => |delta| {
-                try self.reasoning_text.appendSlice(delta.text);
+                try self.reasoning_text.appendSlice(self.allocator, delta.text);
             },
             .tool_call_complete => |tool_call| {
-                try self.tool_calls.append(tool_call);
+                try self.tool_calls.append(self.allocator, tool_call);
             },
             .tool_result => |result| {
-                try self.tool_results.append(result);
+                try self.tool_results.append(self.allocator, result);
             },
             .step_finish => |step| {
                 self.usage = step.usage;
@@ -301,34 +301,34 @@ pub fn streamText(
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
-    var messages_list = std.array_list.Managed(Message).init(arena_allocator);
+    var messages_list = std.ArrayList(Message).empty;
     if (options.system) |sys| {
-        messages_list.append(.{ .role = .system, .content = .{ .text = sys } }) catch return StreamTextError.OutOfMemory;
+        messages_list.append(arena_allocator, .{ .role = .system, .content = .{ .text = sys } }) catch return StreamTextError.OutOfMemory;
     }
     if (options.prompt) |p| {
-        messages_list.append(.{ .role = .user, .content = .{ .text = p } }) catch return StreamTextError.OutOfMemory;
+        messages_list.append(arena_allocator, .{ .role = .user, .content = .{ .text = p } }) catch return StreamTextError.OutOfMemory;
     } else if (options.messages) |msgs| {
         for (msgs) |msg| {
-            messages_list.append(msg) catch return StreamTextError.OutOfMemory;
+            messages_list.append(arena_allocator, msg) catch return StreamTextError.OutOfMemory;
         }
     }
 
     // Convert to provider-level prompt
-    var prompt_msgs = std.array_list.Managed(provider_types.LanguageModelV3Message).init(arena_allocator);
+    var prompt_msgs = std.ArrayList(provider_types.LanguageModelV3Message).empty;
     for (messages_list.items) |msg| {
         switch (msg.content) {
             .text => |text| {
                 switch (msg.role) {
                     .system => {
-                        prompt_msgs.append(provider_types.language_model.systemMessage(text)) catch return StreamTextError.OutOfMemory;
+                        prompt_msgs.append(arena_allocator, provider_types.language_model.systemMessage(text)) catch return StreamTextError.OutOfMemory;
                     },
                     .user => {
                         const m = provider_types.language_model.userTextMessage(arena_allocator, text) catch return StreamTextError.OutOfMemory;
-                        prompt_msgs.append(m) catch return StreamTextError.OutOfMemory;
+                        prompt_msgs.append(arena_allocator, m) catch return StreamTextError.OutOfMemory;
                     },
                     .assistant => {
                         const m = provider_types.language_model.assistantTextMessage(arena_allocator, text) catch return StreamTextError.OutOfMemory;
-                        prompt_msgs.append(m) catch return StreamTextError.OutOfMemory;
+                        prompt_msgs.append(arena_allocator, m) catch return StreamTextError.OutOfMemory;
                     },
                     .tool => {},
                 }
@@ -528,14 +528,15 @@ test "streamText delivers chunks from mock provider" {
 
     // Track received text via ai-level callbacks
     const TestCtx = struct {
-        text_buf: std.array_list.Managed(u8),
+        alloc: std.mem.Allocator,
+        text_buf: std.ArrayList(u8),
 
         fn onPart(part: StreamPart, ctx_raw: ?*anyopaque) void {
             if (ctx_raw) |p| {
                 const self: *@This() = @ptrCast(@alignCast(p));
                 switch (part) {
                     .text_delta => |d| {
-                        self.text_buf.appendSlice(d.text) catch @panic("OOM in test");
+                        self.text_buf.appendSlice(self.alloc, d.text) catch @panic("OOM in test");
                     },
                     else => {},
                 }
@@ -546,8 +547,8 @@ test "streamText delivers chunks from mock provider" {
         fn onComplete(_: ?*anyopaque) void {}
     };
 
-    var test_ctx = TestCtx{ .text_buf = std.array_list.Managed(u8).init(allocator) };
-    defer test_ctx.text_buf.deinit();
+    var test_ctx = TestCtx{ .alloc = allocator, .text_buf = std.ArrayList(u8).empty };
+    defer test_ctx.text_buf.deinit(allocator);
 
     const ctx_ptr: *anyopaque = @ptrCast(&test_ctx);
     const result = try streamText(allocator, .{

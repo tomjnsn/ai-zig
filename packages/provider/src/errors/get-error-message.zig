@@ -21,9 +21,9 @@ pub fn getErrorMessageOrUnknown(err: ?anyerror) []const u8 {
 
 /// Format an error with its cause chain
 pub fn formatErrorChain(info: ai_sdk_error.AiSdkErrorInfo, allocator: std.mem.Allocator) ![]const u8 {
-    var list = std.array_list.Managed(u8).init(allocator);
-    errdefer list.deinit();
-    const writer = list.writer();
+    var list = std.ArrayList(u8).empty;
+    errdefer list.deinit(allocator);
+    const writer = list.writer(allocator);
 
     try writer.print("{s}: {s}", .{ info.name(), info.message });
 
@@ -40,7 +40,7 @@ pub fn formatErrorChain(info: ai_sdk_error.AiSdkErrorInfo, allocator: std.mem.Al
         current_cause = cause.cause;
     }
 
-    return list.toOwnedSlice();
+    return list.toOwnedSlice(allocator);
 }
 
 test "getErrorMessage" {
