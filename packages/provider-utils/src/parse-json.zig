@@ -68,9 +68,9 @@ pub fn parseJson(
 }
 
 /// Check if a string is valid JSON without fully parsing it
-pub fn isParsableJson(text: []const u8) bool {
+pub fn isParsableJson(allocator: std.mem.Allocator, text: []const u8) bool {
     // Quick validation using std.json scanner
-    var scanner = std.json.Scanner.initCompleteInput(std.testing.allocator, text);
+    var scanner = std.json.Scanner.initCompleteInput(allocator, text);
     defer scanner.deinit();
 
     while (true) {
@@ -218,12 +218,13 @@ test "safeParseJson empty string" {
 }
 
 test "isParsableJson" {
-    try std.testing.expect(isParsableJson("{}"));
-    try std.testing.expect(isParsableJson("{\"key\": \"value\"}"));
-    try std.testing.expect(isParsableJson("[1, 2, 3]"));
-    try std.testing.expect(isParsableJson("null"));
-    try std.testing.expect(!isParsableJson("{invalid}"));
-    try std.testing.expect(!isParsableJson(""));
+    const allocator = std.testing.allocator;
+    try std.testing.expect(isParsableJson(allocator, "{}"));
+    try std.testing.expect(isParsableJson(allocator, "{\"key\": \"value\"}"));
+    try std.testing.expect(isParsableJson(allocator, "[1, 2, 3]"));
+    try std.testing.expect(isParsableJson(allocator, "null"));
+    try std.testing.expect(!isParsableJson(allocator, "{invalid}"));
+    try std.testing.expect(!isParsableJson(allocator, ""));
 }
 
 test "parseJson success" {
@@ -397,18 +398,19 @@ test "extractJsonField invalid json" {
 }
 
 test "isParsableJson edge cases" {
+    const allocator = std.testing.allocator;
     // Valid JSON types
-    try std.testing.expect(isParsableJson("true"));
-    try std.testing.expect(isParsableJson("false"));
-    try std.testing.expect(isParsableJson("123"));
-    try std.testing.expect(isParsableJson("-456.789"));
-    try std.testing.expect(isParsableJson("\"string\""));
-    try std.testing.expect(isParsableJson("[]"));
+    try std.testing.expect(isParsableJson(allocator, "true"));
+    try std.testing.expect(isParsableJson(allocator, "false"));
+    try std.testing.expect(isParsableJson(allocator, "123"));
+    try std.testing.expect(isParsableJson(allocator, "-456.789"));
+    try std.testing.expect(isParsableJson(allocator, "\"string\""));
+    try std.testing.expect(isParsableJson(allocator, "[]"));
 
     // Invalid JSON
-    try std.testing.expect(!isParsableJson("undefined"));
-    try std.testing.expect(!isParsableJson("{"));
-    try std.testing.expect(!isParsableJson("}"));
-    try std.testing.expect(!isParsableJson("[,]"));
-    try std.testing.expect(!isParsableJson("{,}"));
+    try std.testing.expect(!isParsableJson(allocator, "undefined"));
+    try std.testing.expect(!isParsableJson(allocator, "{"));
+    try std.testing.expect(!isParsableJson(allocator, "}"));
+    try std.testing.expect(!isParsableJson(allocator, "[,]"));
+    try std.testing.expect(!isParsableJson(allocator, "{,}"));
 }
