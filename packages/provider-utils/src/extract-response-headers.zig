@@ -8,7 +8,14 @@ pub fn extractResponseHeaders(
     headers: []const http_client.HttpClient.Header,
 ) !std.StringHashMap([]const u8) {
     var result = std.StringHashMap([]const u8).init(allocator);
-    errdefer result.deinit();
+    errdefer {
+        var it = result.iterator();
+        while (it.next()) |entry| {
+            allocator.free(entry.key_ptr.*);
+            allocator.free(entry.value_ptr.*);
+        }
+        result.deinit();
+    }
 
     for (headers) |header| {
         // Duplicate the value to ensure it's owned by the allocator
@@ -23,6 +30,7 @@ pub fn extractResponseHeaders(
         } else {
             // New key, duplicate the name
             const name = try allocator.dupe(u8, header.name);
+            errdefer allocator.free(name);
             try result.put(name, value);
         }
     }
@@ -36,14 +44,22 @@ pub fn extractResponseHeadersSlice(
     allocator: std.mem.Allocator,
     headers: []const http_client.HttpClient.Header,
 ) ![]http_client.HttpClient.Header {
-    var result = try allocator.alloc(http_client.HttpClient.Header, headers.len);
-    errdefer allocator.free(result);
+    const result = try allocator.alloc(http_client.HttpClient.Header, headers.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (result[0..initialized]) |header| {
+            allocator.free(header.name);
+            allocator.free(header.value);
+        }
+        allocator.free(result);
+    }
 
     for (headers, 0..) |header, i| {
-        result[i] = .{
-            .name = try allocator.dupe(u8, header.name),
-            .value = try allocator.dupe(u8, header.value),
-        };
+        const name = try allocator.dupe(u8, header.name);
+        errdefer allocator.free(name);
+        const value = try allocator.dupe(u8, header.value);
+        result[i] = .{ .name = name, .value = value };
+        initialized = i + 1;
     }
 
     return result;
