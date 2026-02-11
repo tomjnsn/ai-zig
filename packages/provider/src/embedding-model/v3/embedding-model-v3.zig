@@ -2,6 +2,7 @@ const std = @import("std");
 const shared = @import("../../shared/v3/index.zig");
 const json_value = @import("../../json-value/index.zig");
 const EmbeddingModelV3Embedding = @import("embedding-model-v3-embedding.zig").EmbeddingModelV3Embedding;
+const ErrorDiagnostic = @import("../../errors/diagnostic.zig").ErrorDiagnostic;
 
 /// Call options for embedding generation
 pub const EmbeddingModelCallOptions = struct {
@@ -13,6 +14,9 @@ pub const EmbeddingModelCallOptions = struct {
 
     /// Additional HTTP headers to be sent with the request.
     headers: ?shared.SharedV3Headers = null,
+
+    /// Error diagnostic out-parameter for rich error context on failure.
+    error_diagnostic: ?*ErrorDiagnostic = null,
 };
 
 /// Specification for an embedding model that implements version 3.

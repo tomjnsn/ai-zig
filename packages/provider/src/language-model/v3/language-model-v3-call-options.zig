@@ -5,6 +5,7 @@ const LanguageModelV3Prompt = @import("language-model-v3-prompt.zig").LanguageMo
 const LanguageModelV3FunctionTool = @import("language-model-v3-function-tool.zig").LanguageModelV3FunctionTool;
 const LanguageModelV3ProviderTool = @import("language-model-v3-provider-tool.zig").LanguageModelV3ProviderTool;
 const LanguageModelV3ToolChoice = @import("language-model-v3-tool-choice.zig").LanguageModelV3ToolChoice;
+const ErrorDiagnostic = @import("../../errors/diagnostic.zig").ErrorDiagnostic;
 
 /// Options for calling a language model.
 pub const LanguageModelV3CallOptions = struct {
@@ -62,6 +63,9 @@ pub const LanguageModelV3CallOptions = struct {
 
     /// Additional provider-specific options.
     provider_options: ?shared.SharedV3ProviderOptions = null,
+
+    /// Error diagnostic out-parameter for rich error context on failure.
+    error_diagnostic: ?*ErrorDiagnostic = null,
 
     /// Response format options
     pub const ResponseFormat = union(enum) {
