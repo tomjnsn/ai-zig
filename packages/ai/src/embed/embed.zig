@@ -154,6 +154,7 @@ pub fn embed(
     const values = [_][]const u8{options.value};
     const call_options = provider_types.EmbeddingModelCallOptions{
         .values = &values,
+        .error_diagnostic = options.error_diagnostic,
     };
 
     const CallbackCtx = struct {
@@ -248,6 +249,7 @@ pub fn embedMany(
 
         const call_options = provider_types.EmbeddingModelCallOptions{
             .values = batch,
+            .error_diagnostic = options.error_diagnostic,
         };
 
         const CallbackCtx = struct { result: ?EmbeddingModelV3.EmbedResult = null };

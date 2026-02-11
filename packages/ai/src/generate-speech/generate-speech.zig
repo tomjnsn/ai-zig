@@ -165,6 +165,7 @@ pub fn generateSpeech(
         .text = options.text,
         .voice = options.voice,
         .speed = if (options.voice_settings.speed) |s| @as(f32, @floatCast(s)) else null,
+        .error_diagnostic = options.error_diagnostic,
     };
 
     // Call model.doGenerate

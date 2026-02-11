@@ -170,6 +170,7 @@ pub fn generateObject(
         .temperature = if (options.settings.temperature) |t| @as(f32, @floatCast(t)) else null,
         .top_p = if (options.settings.top_p) |t| @as(f32, @floatCast(t)) else null,
         .seed = if (options.settings.seed) |s| @as(i64, @intCast(s)) else null,
+        .error_diagnostic = options.error_diagnostic,
     };
 
     // Call model.doGenerate
