@@ -411,32 +411,30 @@ pub const OpenAIChatLanguageModel = struct {
         };
 
         // Make the streaming request
-        http_client.postStream(url, headers, body, request_allocator, struct {
-            fn onChunk(ctx: *anyopaque, chunk: []const u8) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.processChunk(chunk) catch |err| {
-                    state.callbacks.on_error(state.callbacks.ctx, err);
-                };
-            }
-            fn onComplete(ctx: *anyopaque) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.finish();
-            }
-            fn onError(ctx: *anyopaque, err: anyerror) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.callbacks.on_error(state.callbacks.ctx, err);
-            }
-        }.onChunk, struct {
-            fn onComplete(ctx: *anyopaque) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.finish();
-            }
-        }.onComplete, struct {
-            fn onError(ctx: *anyopaque, err: anyerror) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.callbacks.on_error(state.callbacks.ctx, err);
-            }
-        }.onError, &stream_state);
+        const HttpClient = provider_utils.HttpClient;
+        try http_client.postStream(url, headers, body, request_allocator, .{
+            .on_chunk = struct {
+                fn cb(ctx: ?*anyopaque, chunk: []const u8) void {
+                    const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                    state.processChunk(chunk) catch |err| {
+                        state.callbacks.on_error(state.callbacks.ctx, err);
+                    };
+                }
+            }.cb,
+            .on_complete = struct {
+                fn cb(ctx: ?*anyopaque) void {
+                    const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                    state.finish();
+                }
+            }.cb,
+            .on_error = struct {
+                fn cb(ctx: ?*anyopaque, _: HttpClient.HttpError) void {
+                    const state: *StreamState = @ptrCast(@alignCast(ctx.?));
+                    state.callbacks.on_error(state.callbacks.ctx, error.ApiCallError);
+                }
+            }.cb,
+            .ctx = @as(?*anyopaque, @ptrCast(&stream_state)),
+        });
     }
 
     /// Convert to LanguageModelV3 interface
@@ -495,6 +493,12 @@ pub const OpenAIChatLanguageModel = struct {
                                 .finish_reason = ok.finish_reason,
                                 .usage = ok.usage,
                                 .warnings = ok.warnings,
+                                .response = .{
+                                    .metadata = .{
+                                        .id = ok.response_id,
+                                        .model_id = ok.model_id,
+                                    },
+                                },
                             },
                         });
                     },
@@ -514,11 +518,8 @@ pub const OpenAIChatLanguageModel = struct {
         allocator: std.mem.Allocator,
         callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) void {
-        _ = impl;
-        _ = allocator;
-        _ = options;
-        // Stub for now - streaming not yet implemented
-        callbacks.on_complete(callbacks.ctx, null);
+        const self: *Self = @ptrCast(@alignCast(impl));
+        self.doStream(options, allocator, callbacks);
     }
 };
 
@@ -630,8 +631,12 @@ const StreamState = struct {
                             .source = .{
                                 .source_type = .url,
                                 .id = try provider_utils.generateId(self.result_allocator),
-                                .url = ann.url_citation.url,
-                                .title = ann.url_citation.title,
+                                .data = .{
+                                    .url = .{
+                                        .url = ann.url_citation.url,
+                                        .title = ann.url_citation.title,
+                                    },
+                                },
                             },
                         });
                     }
@@ -695,11 +700,12 @@ const StreamState = struct {
                         });
 
                         // Emit tool call
+                        const args_copy = self.result_allocator.dupe(u8, tool_call.arguments.items) catch return;
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_call = .{
                                 .tool_call_id = tool_call.id,
                                 .tool_name = tool_call.name,
-                                .input = json_value.JsonValue.parse(self.result_allocator, tool_call.arguments.items) catch .{ .object = json_value.JsonObject.init(self.result_allocator) },
+                                .input = args_copy,
                             },
                         });
                     }
