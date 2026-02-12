@@ -13,10 +13,19 @@ Zig AI SDK - A comprehensive AI SDK for Zig, ported from the Vercel AI SDK. Prov
 ```bash
 zig build              # Build all packages
 zig build test         # Run all unit tests
+zig build test-live    # Run live provider integration tests (requires API keys in .env)
 zig build run-example  # Run the example application
 ```
 
 There is no way to run individual test files - all tests are compiled and run together via `build.zig`.
+
+## GitHub Workflow
+
+This is a fork. Remotes:
+- `origin` = `tomjnsn/ai-zig` (this fork — PRs and issues go here)
+- `upstream` = `evmts/ai-zig` (upstream)
+
+**IMPORTANT**: Always use `-R tomjnsn/ai-zig` or rely on `gh repo set-default` when creating PRs/issues with `gh`. Never create PRs or issues on the upstream `evmts/ai-zig` repo.
 
 ## Architecture
 

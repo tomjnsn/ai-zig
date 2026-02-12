@@ -231,6 +231,37 @@ pub const HttpClient = struct {
             .body = body,
         }, allocator, on_response, on_error, ctx);
     }
+
+    /// Convenience method for making a streaming POST request.
+    /// Converts a StringHashMap of headers to the slice format expected by requestStreaming().
+    pub fn postStream(
+        self: HttpClient,
+        url: []const u8,
+        headers: std.StringHashMap([]const u8),
+        body: []const u8,
+        allocator: std.mem.Allocator,
+        callbacks: StreamCallbacks,
+    ) !void {
+        // Convert headers to slice
+        var header_list: [max_header_count]Header = undefined;
+        var header_count: usize = 0;
+        var iter = headers.iterator();
+        while (iter.next()) |entry| {
+            if (header_count >= max_header_count) return error.TooManyHeaders;
+            header_list[header_count] = .{
+                .name = entry.key_ptr.*,
+                .value = entry.value_ptr.*,
+            };
+            header_count += 1;
+        }
+
+        self.requestStreaming(.{
+            .method = .POST,
+            .url = url,
+            .headers = header_list[0..header_count],
+            .body = body,
+        }, allocator, callbacks);
+    }
 };
 
 /// Builder for constructing HTTP requests
