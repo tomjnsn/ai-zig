@@ -59,6 +59,7 @@ pub const OpenAIProvider = struct {
             .config = .{
                 .provider = provider_name,
                 .base_url = base_url,
+                .api_key = settings.api_key,
                 .headers_fn = getHeadersFn,
                 .http_client = settings.http_client,
             },
@@ -250,13 +251,13 @@ fn getApiKeyFromEnv() ?[]const u8 {
 /// Headers function for config.
 /// Caller owns the returned HashMap and must call deinit() when done.
 fn getHeadersFn(config: *const config_mod.OpenAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
-    _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
     errdefer headers.deinit();
 
-    // Add authorization header
-    if (getApiKeyFromEnv()) |api_key| {
-        const auth_value = try std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key});
+    // Add authorization header (prefer config, fall back to env var)
+    const api_key = config.api_key orelse getApiKeyFromEnv();
+    if (api_key) |key| {
+        const auth_value = try std.fmt.allocPrint(allocator, "Bearer {s}", .{key});
         try headers.put("Authorization", auth_value);
     }
 

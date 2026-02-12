@@ -400,7 +400,7 @@ pub fn build(b: *std.Build) void {
     live_tests.root_module.addImport("provider-utils", provider_utils_mod);
     live_tests.root_module.addImport("openai", openai_mod);
     live_tests.root_module.addImport("azure", azure_mod);
-    live_tests.root_module.addImport("xai", xai_mod);
+    // TODO: Add xai once openai-compatible doGenerate is implemented (#7)
     // TODO: Add anthropic, google, google-vertex once their vtable serialization bugs are fixed
     test_live_step.dependOn(&b.addRunArtifact(live_tests).step);
 

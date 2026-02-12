@@ -10,17 +10,23 @@ pub const OpenAIConfig = struct {
     /// Base URL for the API
     base_url: []const u8,
 
-    /// Function to build the full URL from path
-    url_builder: ?*const fn (config: *const OpenAIConfig, path: []const u8, model_id: []const u8) []const u8 = null,
+    /// Function to build the full URL from path (caller owns returned memory)
+    url_builder: ?*const fn (allocator: std.mem.Allocator, config: *const OpenAIConfig, path: []const u8, model_id: []const u8) error{OutOfMemory}![]u8 = null,
 
     /// Function to get headers
     headers_fn: *const fn (*const OpenAIConfig, std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8),
+
+    /// API key for authentication (overrides env var)
+    api_key: ?[]const u8 = null,
 
     /// HTTP client to use
     http_client: ?HttpClient = null,
 
     /// Optional ID generator
     generate_id: ?*const fn () []const u8 = null,
+
+    /// API version query parameter (used by Azure, null for standard OpenAI)
+    api_version: ?[]const u8 = null,
 
     /// File ID prefixes used to identify file IDs in Responses API.
     /// When null, all file data is treated as base64 content.
@@ -34,7 +40,7 @@ pub const OpenAIConfig = struct {
     /// Build URL from path and model ID
     pub fn buildUrl(self: *const Self, allocator: std.mem.Allocator, path: []const u8, model_id: []const u8) ![]u8 {
         if (self.url_builder) |builder| {
-            return allocator.dupe(u8, builder(self, path, model_id));
+            return builder(allocator, self, path, model_id);
         }
         return std.fmt.allocPrint(allocator, "{s}{s}", .{ self.base_url, path });
     }
