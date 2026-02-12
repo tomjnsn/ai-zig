@@ -65,8 +65,9 @@ pub const AzureOpenAIProvider = struct {
             .config = .{
                 .provider = "azure",
                 .base_url = base_url,
-                .api_version = settings.api_version orelse "v1",
-                .use_deployment_based_urls = settings.use_deployment_based_urls orelse false,
+                .api_version = settings.api_version orelse "2024-10-21",
+                .use_deployment_based_urls = settings.use_deployment_based_urls orelse true,
+                .api_key = settings.api_key,
                 .headers_fn = getHeadersFn,
                 .http_client = settings.http_client,
                 .generate_id = settings.generate_id,
@@ -184,10 +185,45 @@ pub const AzureOpenAIProvider = struct {
         return .{
             .provider = provider_name,
             .base_url = self.config.base_url,
+            .url_builder = if (self.config.use_deployment_based_urls) azureDeploymentUrlBuilder else azureV1UrlBuilder,
+            .api_key = self.config.api_key,
+            .api_version = self.config.api_version,
             .headers_fn = getOpenAIHeadersFn,
             .http_client = self.config.http_client,
             .generate_id = self.config.generate_id,
         };
+    }
+
+    /// URL builder for Azure deployment-based URLs:
+    /// {base_url}/deployments/{model_id}{path}?api-version={api_version}
+    fn azureDeploymentUrlBuilder(
+        allocator: std.mem.Allocator,
+        config: *const openai_config.OpenAIConfig,
+        path: []const u8,
+        model_id: []const u8,
+    ) error{OutOfMemory}![]u8 {
+        const api_version = config.api_version orelse "2024-10-21";
+        return std.fmt.allocPrint(
+            allocator,
+            "{s}/deployments/{s}{s}?api-version={s}",
+            .{ config.base_url, model_id, path, api_version },
+        );
+    }
+
+    /// URL builder for Azure v1 API URLs:
+    /// {base_url}/v1{path}?api-version={api_version}
+    fn azureV1UrlBuilder(
+        allocator: std.mem.Allocator,
+        config: *const openai_config.OpenAIConfig,
+        path: []const u8,
+        _: []const u8,
+    ) error{OutOfMemory}![]u8 {
+        const api_version = config.api_version orelse "2024-10-21";
+        return std.fmt.allocPrint(
+            allocator,
+            "{s}/v1{s}?api-version={s}",
+            .{ config.base_url, path, api_version },
+        );
     }
 
     // -- ProviderV3 Interface --
@@ -252,13 +288,13 @@ fn getApiKeyFromEnv() ?[]const u8 {
 /// Headers function for Azure config.
 /// Caller owns the returned HashMap and must call deinit() when done.
 fn getHeadersFn(config: *const config_mod.AzureOpenAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
-    _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
     errdefer headers.deinit();
 
-    // Add API key header
-    if (getApiKeyFromEnv()) |api_key| {
-        try headers.put("api-key", api_key);
+    // Add API key header (prefer config, fall back to env var)
+    const api_key = config.api_key orelse getApiKeyFromEnv();
+    if (api_key) |key| {
+        try headers.put("api-key", key);
     }
 
     // Add content-type
@@ -269,13 +305,13 @@ fn getHeadersFn(config: *const config_mod.AzureOpenAIConfig, allocator: std.mem.
 
 /// Headers function for OpenAI config (used by models)
 fn getOpenAIHeadersFn(config: *const openai_config.OpenAIConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
-    _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
     errdefer headers.deinit();
 
     // Add API key header (Azure uses api-key instead of Authorization)
-    if (getApiKeyFromEnv()) |api_key| {
-        try headers.put("api-key", api_key);
+    const api_key = config.api_key orelse getApiKeyFromEnv();
+    if (api_key) |key| {
+        try headers.put("api-key", key);
     }
 
     // Add content-type
@@ -345,8 +381,8 @@ test "AzureOpenAIProvider with default settings" {
     defer provider.deinit();
 
     try std.testing.expectEqualStrings("azure", provider.getProvider());
-    try std.testing.expectEqualStrings("v1", provider.config.api_version);
-    try std.testing.expectEqual(false, provider.config.use_deployment_based_urls);
+    try std.testing.expectEqualStrings("2024-10-21", provider.config.api_version);
+    try std.testing.expectEqual(true, provider.config.use_deployment_based_urls);
 }
 
 test "AzureOpenAIProvider with resource name" {

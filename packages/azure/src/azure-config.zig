@@ -10,11 +10,14 @@ pub const AzureOpenAIConfig = struct {
     /// Base URL for API calls
     base_url: []const u8,
 
-    /// API version
-    api_version: []const u8 = "v1",
+    /// API version (Azure uses date-based versions, e.g. "2024-10-21")
+    api_version: []const u8 = "2024-10-21",
 
-    /// Use deployment-based URLs
-    use_deployment_based_urls: bool = false,
+    /// Use deployment-based URLs (standard for Azure OpenAI)
+    use_deployment_based_urls: bool = true,
+
+    /// API key for authentication (overrides env var)
+    api_key: ?[]const u8 = null,
 
     /// Function to get headers.
     /// Caller owns the returned HashMap and must call deinit() when done.
@@ -66,8 +69,8 @@ test "AzureOpenAIConfig default values" {
     };
 
     try std.testing.expectEqualStrings("azure.chat", config.provider);
-    try std.testing.expectEqualStrings("v1", config.api_version);
-    try std.testing.expectEqual(false, config.use_deployment_based_urls);
+    try std.testing.expectEqualStrings("2024-10-21", config.api_version);
+    try std.testing.expectEqual(true, config.use_deployment_based_urls);
     try std.testing.expectEqual(null, config.headers_fn);
     try std.testing.expectEqual(null, config.http_client);
     try std.testing.expectEqual(null, config.generate_id);

@@ -43,6 +43,7 @@ pub const XaiProvider = struct {
             .{
                 .provider = "xai.chat",
                 .base_url = self.base_url,
+                .api_key = self.settings.api_key,
                 .headers_fn = getHeadersFn,
                 .http_client = self.settings.http_client,
             },
@@ -101,16 +102,16 @@ fn getApiKeyFromEnv() ?[]const u8 {
 
 /// Caller owns the returned HashMap and must call deinit() when done.
 fn getHeadersFn(config: *const openai_compat.OpenAICompatibleConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
-    _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
     errdefer headers.deinit();
     try headers.put("Content-Type", "application/json");
 
-    if (getApiKeyFromEnv()) |api_key| {
+    const api_key = config.api_key orelse getApiKeyFromEnv();
+    if (api_key) |key| {
         const auth_header = try std.fmt.allocPrint(
             allocator,
             "Bearer {s}",
-            .{api_key},
+            .{key},
         );
         try headers.put("Authorization", auth_header);
     }

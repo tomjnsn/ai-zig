@@ -208,7 +208,9 @@ pub const OpenAIChatLanguageModel = struct {
         const response_body = http_response.body;
 
         // Parse response
-        const parsed = std.json.parseFromSlice(api.OpenAIChatResponse, request_allocator, response_body, .{}) catch {
+        const parsed = std.json.parseFromSlice(api.OpenAIChatResponse, request_allocator, response_body, .{
+            .ignore_unknown_fields = true,
+        }) catch {
             return error.InvalidResponse;
         };
         const response = parsed.value;

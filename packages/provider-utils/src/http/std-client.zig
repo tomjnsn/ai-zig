@@ -124,9 +124,9 @@ pub const StdHttpClient = struct {
         var extra_header_buf: [client_mod.HttpClient.max_header_count]std.http.Header = undefined;
         const extra_headers = buildExtraHeaders(req.headers, &extra_header_buf);
 
-        // Create response body writer
+        // Create response body writer (allocated from caller's arena - no deinit here,
+        // the arena owns the memory and the body slice must survive until the caller is done)
         var response_body: std.Io.Writer.Allocating = .init(allocator);
-        defer response_body.deinit();
 
         // Perform the fetch
         const result = http_client.fetch(.{
