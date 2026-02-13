@@ -237,7 +237,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         const response_body = http_response.body;
 
         // Parse response
-        const parsed = std.json.parseFromSlice(api.AnthropicMessagesResponse, request_allocator, response_body, .{}) catch {
+        const parsed = std.json.parseFromSlice(api.AnthropicMessagesResponse, request_allocator, response_body, .{ .ignore_unknown_fields = true }) catch {
             return error.InvalidResponse;
         };
         defer parsed.deinit();
@@ -557,7 +557,7 @@ const StreamState = struct {
             } else if (std.mem.startsWith(u8, line, "data: ")) {
                 const json_data = line[6..];
 
-                const parsed = std.json.parseFromSlice(api.AnthropicMessagesChunk, self.result_allocator, json_data, .{}) catch |err| {
+                const parsed = std.json.parseFromSlice(api.AnthropicMessagesChunk, self.result_allocator, json_data, .{ .ignore_unknown_fields = true }) catch |err| {
                     // Report JSON parse error to caller but continue processing subsequent chunks
                     self.callbacks.on_part(self.callbacks.ctx, .{
                         .@"error" = .{ .err = err, .message = "Failed to parse SSE chunk JSON" },
@@ -740,7 +740,7 @@ const StreamState = struct {
 fn serializeRequest(allocator: std.mem.Allocator, request: api.AnthropicMessagesRequest) ![]const u8 {
     var out: std.io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try std.json.Stringify.value(request, .{}, &out.writer);
+    try std.json.Stringify.value(request, .{ .emit_null_optional_fields = false }, &out.writer);
     return out.toOwnedSlice();
 }
 

@@ -89,6 +89,11 @@ pub const JsonValue = union(enum) {
         return fromStdJson(allocator, std_value) catch return error.OutOfMemory;
     }
 
+    /// Custom deserialization from std.json.Value for innerParseFromValue compatibility.
+    pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, _: std.json.ParseOptions) std.json.ParseFromValueError!Self {
+        return fromStdJson(allocator, source) catch return error.OutOfMemory;
+    }
+
     /// Custom serialization for std.json.Stringify compatibility.
     /// This allows JsonValue to be used in structs serialized by std.json.Stringify.
     pub fn jsonStringify(self: Self, jws: anytype) !void {
