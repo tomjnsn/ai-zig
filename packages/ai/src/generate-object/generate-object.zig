@@ -210,6 +210,13 @@ pub fn generateObject(
     // Parse JSON from model output
     const parsed = parseJsonOutput(allocator, raw_text) catch return GenerateObjectError.ParseError;
 
+    // Validate against schema
+    if (!validateAgainstSchema(parsed.value, options.schema.json_schema)) {
+        var p = parsed;
+        p.deinit();
+        return GenerateObjectError.ValidationError;
+    }
+
     // Map usage
     const usage = LanguageModelUsage{
         .input_tokens = gen_success.usage.input_tokens.total,
@@ -286,15 +293,118 @@ pub fn parseJsonOutput(
     return error.NoJsonFound;
 }
 
-/// Validate parsed object against schema (basic validation)
+/// Validate a JSON value against a JSON Schema.
+/// Supports: type, required, properties (recursive), items, enum.
 pub fn validateAgainstSchema(
-    object: std.json.Value,
+    value: std.json.Value,
     schema: std.json.Value,
 ) bool {
-    _ = object;
-    _ = schema;
-    // TODO: Implement JSON Schema validation
+    // Schema must be an object to contain constraints
+    const schema_obj = switch (schema) {
+        .object => |o| o,
+        else => return true,
+    };
+
+    // Check "type" constraint
+    if (schema_obj.get("type")) |type_val| {
+        switch (type_val) {
+            .string => |type_str| {
+                if (!checkJsonType(value, type_str)) return false;
+            },
+            else => {},
+        }
+    }
+
+    switch (value) {
+        .object => |obj| {
+            // Check "required" fields
+            if (schema_obj.get("required")) |required_val| {
+                switch (required_val) {
+                    .array => |required_arr| {
+                        for (required_arr.items) |req| {
+                            switch (req) {
+                                .string => |req_name| {
+                                    if (!obj.contains(req_name)) return false;
+                                },
+                                else => {},
+                            }
+                        }
+                    },
+                    else => {},
+                }
+            }
+            // Validate "properties" recursively
+            if (schema_obj.get("properties")) |properties_val| {
+                switch (properties_val) {
+                    .object => |properties| {
+                        var iter = properties.iterator();
+                        while (iter.next()) |entry| {
+                            if (obj.get(entry.key_ptr.*)) |prop_value| {
+                                if (!validateAgainstSchema(prop_value, entry.value_ptr.*)) return false;
+                            }
+                        }
+                    },
+                    else => {},
+                }
+            }
+        },
+        .array => |arr| {
+            // Validate "items" schema for each array element
+            if (schema_obj.get("items")) |items_schema| {
+                for (arr.items) |item| {
+                    if (!validateAgainstSchema(item, items_schema)) return false;
+                }
+            }
+        },
+        else => {},
+    }
+
+    // Check "enum" constraint
+    if (schema_obj.get("enum")) |enum_val| {
+        switch (enum_val) {
+            .array => |enum_arr| {
+                var found = false;
+                for (enum_arr.items) |allowed| {
+                    if (jsonValuesEqual(value, allowed)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            },
+            else => {},
+        }
+    }
+
     return true;
+}
+
+/// Check if a JSON value matches an expected JSON Schema type string.
+fn checkJsonType(value: std.json.Value, expected: []const u8) bool {
+    if (std.mem.eql(u8, expected, "object")) return value == .object;
+    if (std.mem.eql(u8, expected, "array")) return value == .array;
+    if (std.mem.eql(u8, expected, "string")) return value == .string;
+    if (std.mem.eql(u8, expected, "number")) return value == .float or value == .integer or value == .number_string;
+    if (std.mem.eql(u8, expected, "integer")) return value == .integer;
+    if (std.mem.eql(u8, expected, "boolean")) return value == .bool;
+    if (std.mem.eql(u8, expected, "null")) return value == .null;
+    return true; // Unknown type, pass
+}
+
+/// Simple equality check for JSON values (used for enum validation).
+fn jsonValuesEqual(a: std.json.Value, b: std.json.Value) bool {
+    const tag_a = std.meta.activeTag(a);
+    const tag_b = std.meta.activeTag(b);
+    if (tag_a != tag_b) return false;
+
+    return switch (a) {
+        .null => true,
+        .bool => |va| va == b.bool,
+        .integer => |va| va == b.integer,
+        .float => |va| va == b.float,
+        .string => |va| std.mem.eql(u8, va, b.string),
+        else => false,
+    };
 }
 
 test "GenerateObjectOptions default values" {
@@ -384,4 +494,148 @@ test "generateObject returns valid JSON object from mock model" {
     // Should have parsed JSON object from model
     try std.testing.expectEqualStrings("{\"name\":\"Alice\",\"age\":30}", result.raw_text);
     try std.testing.expect(result.object == .object);
+}
+
+test "validateAgainstSchema type check passes" {
+    const schema = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"type":"string"}
+    , .{});
+    defer schema.deinit();
+    try std.testing.expect(validateAgainstSchema(.{ .string = "hello" }, schema.value));
+}
+
+test "validateAgainstSchema type check fails" {
+    const schema = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"type":"string"}
+    , .{});
+    defer schema.deinit();
+    try std.testing.expect(!validateAgainstSchema(.{ .integer = 42 }, schema.value));
+}
+
+test "validateAgainstSchema required fields pass" {
+    const schema = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"type":"object","required":["name"]}
+    , .{});
+    defer schema.deinit();
+    const obj = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"name":"Alice"}
+    , .{});
+    defer obj.deinit();
+    try std.testing.expect(validateAgainstSchema(obj.value, schema.value));
+}
+
+test "validateAgainstSchema required field missing fails" {
+    const schema = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"type":"object","required":["name","age"]}
+    , .{});
+    defer schema.deinit();
+    const obj = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"name":"Alice"}
+    , .{});
+    defer obj.deinit();
+    try std.testing.expect(!validateAgainstSchema(obj.value, schema.value));
+}
+
+test "validateAgainstSchema nested property type validation" {
+    const schema = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"type":"object","properties":{"age":{"type":"integer"}}}
+    , .{});
+    defer schema.deinit();
+
+    const valid = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"age":30}
+    , .{});
+    defer valid.deinit();
+    try std.testing.expect(validateAgainstSchema(valid.value, schema.value));
+
+    const invalid = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"age":"thirty"}
+    , .{});
+    defer invalid.deinit();
+    try std.testing.expect(!validateAgainstSchema(invalid.value, schema.value));
+}
+
+test "validateAgainstSchema empty schema passes anything" {
+    // Empty schema should pass any value
+    const schema = std.json.Value{ .object = std.json.ObjectMap.init(std.testing.allocator) };
+    try std.testing.expect(validateAgainstSchema(.{ .string = "hello" }, schema));
+    try std.testing.expect(validateAgainstSchema(.{ .integer = 42 }, schema));
+    try std.testing.expect(validateAgainstSchema(.null, schema));
+}
+
+test "validateAgainstSchema number type accepts integer and float" {
+    const schema = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"type":"number"}
+    , .{});
+    defer schema.deinit();
+    try std.testing.expect(validateAgainstSchema(.{ .integer = 42 }, schema.value));
+    try std.testing.expect(validateAgainstSchema(.{ .float = 3.14 }, schema.value));
+    try std.testing.expect(!validateAgainstSchema(.{ .string = "42" }, schema.value));
+}
+
+test "generateObject rejects schema-invalid output" {
+    const MockBadModel = struct {
+        const Self = @This();
+
+        // Returns valid JSON object that is missing the required "name" field
+        const mock_content = [_]provider_types.LanguageModelV3Content{
+            .{ .text = .{ .text = "{\"wrong\":\"field\"}" } },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-bad-json";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .content = &mock_content,
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.initWithTotals(10, 5),
+            } });
+        }
+
+        pub fn doStream(
+            _: *const Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockBadModel{};
+    var model = provider_types.asLanguageModel(MockBadModel, &mock);
+
+    // Schema requires "name" field, but model returns {"wrong":"field"}
+    const schema = try std.json.parseFromSlice(std.json.Value, std.testing.allocator,
+        \\{"type":"object","required":["name"]}
+    , .{});
+    defer schema.deinit();
+
+    const result = generateObject(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "Generate a person",
+        .schema = .{ .json_schema = schema.value },
+    });
+    try std.testing.expectError(GenerateObjectError.ValidationError, result);
 }
