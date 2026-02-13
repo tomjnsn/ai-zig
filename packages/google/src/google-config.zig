@@ -10,6 +10,9 @@ pub const GoogleGenerativeAIConfig = struct {
     /// Base URL for API calls
     base_url: []const u8 = default_base_url,
 
+    /// API key for authenticating requests (preferred over env var)
+    api_key: ?[]const u8 = null,
+
     /// Function to get headers.
     /// Caller owns the returned HashMap and must call deinit() when done.
     headers_fn: ?*const fn (*const GoogleGenerativeAIConfig, std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) = null,

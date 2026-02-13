@@ -48,6 +48,7 @@ pub const AnthropicProvider = struct {
             .config = .{
                 .provider = provider_name,
                 .base_url = base_url,
+                .api_key = settings.api_key,
                 .headers_fn = getHeadersFn,
                 .http_client = settings.http_client,
                 .generate_id = settings.generate_id,
@@ -140,13 +141,13 @@ fn getApiKeyFromEnv() ?[]const u8 {
 
 /// Headers function for config
 fn getHeadersFn(config: *const config_mod.AnthropicConfig, allocator: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
-    _ = config;
     var headers = std.StringHashMap([]const u8).init(allocator);
     errdefer headers.deinit();
 
-    // Add API key header
-    if (getApiKeyFromEnv()) |api_key| {
-        try headers.put("x-api-key", api_key);
+    // Add API key header (prefer config, fall back to env var)
+    const api_key = config.api_key orelse getApiKeyFromEnv();
+    if (api_key) |key| {
+        try headers.put("x-api-key", key);
     }
 
     // Add Anthropic version header

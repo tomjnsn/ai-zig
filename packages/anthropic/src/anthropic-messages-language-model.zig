@@ -761,7 +761,7 @@ test "AnthropicMessagesLanguageModel basic" {
 }
 
 test "Anthropic API version constant" {
-    try std.testing.expectEqualStrings("2024-06-01", config_mod.anthropic_version);
+    try std.testing.expectEqualStrings("2023-06-01", config_mod.anthropic_version);
 }
 
 test "Anthropic stop reason mapping" {
