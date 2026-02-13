@@ -164,6 +164,30 @@ pub const TranscribeError = error{
     OutOfMemory,
 };
 
+/// Read audio data from a local file path.
+fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    return try file.readToEndAlloc(allocator, 100 * 1024 * 1024); // 100MB max
+}
+
+/// Fetch audio data from a URL using the standard HTTP client.
+fn fetchUrl(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {
+    var client = std.http.Client{ .allocator = allocator };
+    defer client.deinit();
+
+    var response_body: std.Io.Writer.Allocating = .init(allocator);
+
+    const result = client.fetch(.{
+        .location = .{ .url = url },
+        .response_writer = &response_body.writer,
+    }) catch return error.NetworkError;
+
+    if (result.status != .ok) return error.NetworkError;
+
+    return response_body.toOwnedSlice() catch return error.OutOfMemory;
+}
+
 /// Transcribe audio using a transcription model
 pub fn transcribe(
     allocator: std.mem.Allocator,
@@ -175,6 +199,10 @@ pub fn transcribe(
     }
 
     // Validate input and extract audio data
+    // Track whether we allocated temporary audio data that needs freeing
+    var temp_audio_buf: ?[]const u8 = null;
+    defer if (temp_audio_buf) |buf| allocator.free(buf);
+
     const audio_data: provider_types.TranscriptionModelV3CallOptions.AudioData = switch (options.audio) {
         .data => |d| blk: {
             if (d.data.len == 0) return TranscribeError.InvalidAudio;
@@ -182,11 +210,15 @@ pub fn transcribe(
         },
         .url => |u| blk: {
             if (u.len == 0) return TranscribeError.InvalidAudio;
-            break :blk .{ .binary = u }; // TODO: fetch URL
+            const fetched = fetchUrl(allocator, u) catch return TranscribeError.NetworkError;
+            temp_audio_buf = fetched;
+            break :blk .{ .binary = fetched };
         },
         .file => |f| blk: {
             if (f.len == 0) return TranscribeError.InvalidAudio;
-            break :blk .{ .binary = f }; // TODO: read file
+            const contents = readFile(allocator, f) catch return TranscribeError.InvalidAudio;
+            temp_audio_buf = contents;
+            break :blk .{ .binary = contents };
         },
     };
 
@@ -441,4 +473,131 @@ test "parseSrt parses SRT format correctly" {
     try std.testing.expectApproxEqAbs(@as(f64, 2.5), segments[1].start, 0.001);
     try std.testing.expectApproxEqAbs(@as(f64, 5.0), segments[1].end, 0.001);
     try std.testing.expectEqual(@as(?u32, 2), segments[1].id);
+}
+
+test "transcribe reads audio from file source" {
+    const MockTranscriptionModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-transcribe-file";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            call_opts: provider_types.TranscriptionModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, TranscriptionModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            // Verify audio data was read from the file (not just the path string)
+            const audio_bytes = call_opts.audio.binary;
+            // The file should contain actual content, not just the file path
+            if (audio_bytes.len > 0 and !std.mem.eql(u8, audio_bytes, "/tmp/test_audio.wav")) {
+                callback(ctx, .{ .success = .{
+                    .text = "transcribed from file",
+                    .segments = &[_]provider_types.TranscriptionSegment{},
+                    .language = "en",
+                    .duration_in_seconds = 1.0,
+                    .response = .{
+                        .timestamp = 1234567890,
+                        .model_id = "mock-transcribe-file",
+                    },
+                } });
+            } else {
+                callback(ctx, .{ .failure = error.ModelError });
+            }
+        }
+    };
+
+    // Create a temporary audio file
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+    const audio_content = "RIFF\x00\x00\x00\x00WAVEfmt fake_audio_content";
+    try tmp_dir.dir.writeFile(.{ .sub_path = "test_audio.wav", .data = audio_content });
+
+    // Get the full path
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const full_path = try tmp_dir.dir.realpath("test_audio.wav", &path_buf);
+
+    var mock = MockTranscriptionModel{};
+    var model = provider_types.asTranscriptionModel(MockTranscriptionModel, &mock);
+
+    const result = try transcribe(std.testing.allocator, .{
+        .model = &model,
+        .audio = .{ .file = full_path },
+    });
+
+    try std.testing.expectEqualStrings("transcribed from file", result.text);
+    try std.testing.expectEqualStrings("mock-transcribe-file", result.response.model_id);
+}
+
+test "transcribe returns InvalidAudio on empty file path" {
+    const MockModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.TranscriptionModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, TranscriptionModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+    };
+
+    var mock = MockModel{};
+    var model = provider_types.asTranscriptionModel(MockModel, &mock);
+
+    const result = transcribe(std.testing.allocator, .{
+        .model = &model,
+        .audio = .{ .file = "" },
+    });
+    try std.testing.expectError(TranscribeError.InvalidAudio, result);
+}
+
+test "transcribe returns InvalidAudio on nonexistent file" {
+    const MockModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.TranscriptionModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, TranscriptionModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.ModelError });
+        }
+    };
+
+    var mock = MockModel{};
+    var model = provider_types.asTranscriptionModel(MockModel, &mock);
+
+    const result = transcribe(std.testing.allocator, .{
+        .model = &model,
+        .audio = .{ .file = "/nonexistent/path/audio.wav" },
+    });
+    try std.testing.expectError(TranscribeError.InvalidAudio, result);
 }
