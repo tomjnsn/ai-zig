@@ -193,7 +193,13 @@ pub fn generateSpeech(
     // Convert provider audio to ai-level GeneratedAudio
     const audio_data = switch (gen_success.audio) {
         .binary => |data| data,
-        .base64 => |_| return GenerateSpeechError.ModelError, // TODO: decode base64
+        .base64 => |b64| blk: {
+            const decoder = std.base64.standard.Decoder;
+            const decoded_len = decoder.calcSizeForSlice(b64) catch return GenerateSpeechError.ModelError;
+            const decoded = allocator.alloc(u8, decoded_len) catch return GenerateSpeechError.OutOfMemory;
+            decoder.decode(decoded, b64) catch return GenerateSpeechError.ModelError;
+            break :blk @as([]const u8, decoded);
+        },
     };
 
     return GenerateSpeechResult{
@@ -348,6 +354,50 @@ test "generateSpeech returns audio from mock provider" {
 
     // Should have model ID from provider
     try std.testing.expectEqualStrings("mock-tts", result.response.model_id);
+}
+
+test "generateSpeech decodes base64 audio from provider" {
+    const MockBase64SpeechModel = struct {
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-tts-b64";
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.SpeechModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, SpeechModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            // Return base64-encoded "Hello Audio"
+            callback(ctx, .{ .success = .{
+                .audio = .{ .base64 = "SGVsbG8gQXVkaW8=" },
+                .response = .{
+                    .timestamp = 1234567890,
+                    .model_id = "mock-tts-b64",
+                },
+            } });
+        }
+    };
+
+    var mock = MockBase64SpeechModel{};
+    var model = provider_types.asSpeechModel(MockBase64SpeechModel, &mock);
+
+    const result = try generateSpeech(std.testing.allocator, .{
+        .model = &model,
+        .text = "Hello, world!",
+    });
+    defer std.testing.allocator.free(result.audio.data);
+
+    // Should have decoded audio data
+    try std.testing.expectEqualStrings("Hello Audio", result.audio.data);
+    try std.testing.expectEqualStrings("mock-tts-b64", result.response.model_id);
 }
 
 test "streamSpeech delivers audio chunks from mock provider" {
