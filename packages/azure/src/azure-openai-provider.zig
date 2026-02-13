@@ -810,3 +810,177 @@ test "Azure config URL construction" {
 
     try std.testing.expectEqualStrings("https://myresource.openai.azure.com/openai", url);
 }
+
+test "Azure doGenerate succeeds via mock HTTP" {
+    const allocator = std.testing.allocator;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 200,
+        .body =
+            \\{"id":"chatcmpl-1","object":"chat.completion","created":1700000000,"model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"Hello from Azure"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}
+        ,
+    });
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_key = "test-azure-key",
+        .api_version = "2024-10-21",
+        .use_deployment_based_urls = true,
+        .http_client = mock.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.chat("gpt-4-deployment");
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var lm_model = model.asLanguageModel();
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{ .prompt = &.{msg} },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Verify successful response
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .success => |success| {
+            // Verify content was parsed
+            try std.testing.expect(success.content.len > 0);
+            switch (success.content[0]) {
+                .text => |text| {
+                    try std.testing.expectEqualStrings("Hello from Azure", text.text);
+                    allocator.free(text.text);
+                },
+                else => try std.testing.expect(false),
+            }
+            allocator.free(success.content);
+            allocator.free(success.warnings);
+            // Free response metadata strings allocated by the OpenAI model
+            if (success.response) |resp| {
+                if (resp.metadata.id) |id| allocator.free(id);
+                if (resp.metadata.model_id) |mid| allocator.free(mid);
+            }
+        },
+        .failure => try std.testing.expect(false),
+    }
+
+    // Verify mock received exactly one request
+    try std.testing.expectEqual(@as(usize, 1), mock.requestCount());
+}
+
+test "Azure ErrorDiagnostic on HTTP 429 rate limit" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 429,
+        .body = "{\"error\":{\"message\":\"Rate limit exceeded\",\"type\":\"rate_limit_error\"}}",
+    });
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_key = "test-key",
+        .http_client = mock.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.chat("gpt-4");
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{ .prompt = &.{msg}, .error_diagnostic = &diag },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Should have failed
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    // Diagnostic should be populated
+    try std.testing.expectEqual(@as(?u16, 429), diag.status_code);
+    try std.testing.expect(diag.kind == .rate_limit);
+    try std.testing.expect(diag.is_retryable);
+    try std.testing.expectEqualStrings("azure.chat", diag.provider.?);
+    try std.testing.expectEqualStrings("Rate limit exceeded", diag.message().?);
+}
+
+test "Azure ErrorDiagnostic on network error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setError(.{
+        .kind = .connection_failed,
+        .message = "Connection refused",
+    });
+
+    var provider = createAzureWithSettings(allocator, .{
+        .base_url = "https://myresource.openai.azure.com/openai",
+        .api_key = "test-key",
+        .http_client = mock.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.chat("gpt-4");
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{ .prompt = &.{msg}, .error_diagnostic = &diag },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Diagnostic should indicate network error
+    try std.testing.expect(diag.kind == .network);
+    try std.testing.expectEqualStrings("Connection refused", diag.message().?);
+    try std.testing.expectEqualStrings("azure.chat", diag.provider.?);
+}

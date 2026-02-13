@@ -238,8 +238,10 @@ pub fn JsonEventStreamParser(comptime T: type) type {
 
             switch (parse_result) {
                 .success => |parsed| {
-                    // In a full implementation, you'd convert parsed to T
-                    _ = parsed;
+                    // TODO: In a full implementation, convert parsed JsonValue to T.
+                    // Free the parsed value to prevent memory leak.
+                    var val = parsed;
+                    val.deinit(self.allocator);
                     self.on_event(self.ctx, .{
                         .failure = .{
                             .message = "Type conversion not implemented",

@@ -491,3 +491,173 @@ test "XaiProvider vtable is correctly initialized" {
     try std.testing.expect(@intFromPtr(vtable.imageModel) != 0);
     // speechModel and transcriptionModel are optional
 }
+
+test "xAI doGenerate succeeds via mock HTTP" {
+    const allocator = std.testing.allocator;
+    const lm = @import("provider").language_model;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 200,
+        .body =
+            \\{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"Hello from xAI"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}
+        ,
+    });
+
+    var provider = createXaiWithSettings(allocator, .{
+        .api_key = "xai-test-key",
+        .http_client = mock.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("grok-2");
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var lm_model = model.asLanguageModel();
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{ .prompt = &.{msg} },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Verify successful response
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .success => |success| {
+            try std.testing.expect(success.content.len > 0);
+            switch (success.content[0]) {
+                .text => |text| {
+                    try std.testing.expectEqualStrings("Hello from xAI", text.text);
+                    allocator.free(text.text);
+                },
+                else => try std.testing.expect(false),
+            }
+            allocator.free(success.content);
+            // Free response metadata strings
+            if (success.response) |resp| {
+                if (resp.metadata.id) |id| allocator.free(id);
+                if (resp.metadata.model_id) |mid| allocator.free(mid);
+            }
+        },
+        .failure => try std.testing.expect(false),
+    }
+
+    // Verify mock received exactly one request
+    try std.testing.expectEqual(@as(usize, 1), mock.requestCount());
+}
+
+test "xAI ErrorDiagnostic on HTTP 429 rate limit" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+    const lm = @import("provider").language_model;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 429,
+        .body = "{\"error\":{\"message\":\"Rate limit exceeded\",\"type\":\"rate_limit_error\"}}",
+    });
+
+    var provider = createXaiWithSettings(allocator, .{
+        .api_key = "test-key",
+        .http_client = mock.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("grok-2");
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{ .prompt = &.{msg}, .error_diagnostic = &diag },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Should have failed
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    // Diagnostic should be populated
+    try std.testing.expectEqual(@as(?u16, 429), diag.status_code);
+    try std.testing.expect(diag.kind == .rate_limit);
+    try std.testing.expect(diag.is_retryable);
+    try std.testing.expectEqualStrings("xai.chat", diag.provider.?);
+    try std.testing.expectEqualStrings("Rate limit exceeded", diag.message().?);
+}
+
+test "xAI ErrorDiagnostic on network error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+    const lm = @import("provider").language_model;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setError(.{
+        .kind = .connection_failed,
+        .message = "Connection refused",
+    });
+
+    var provider = createXaiWithSettings(allocator, .{
+        .api_key = "test-key",
+        .http_client = mock.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("grok-2");
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{ .prompt = &.{msg}, .error_diagnostic = &diag },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Diagnostic should indicate network error
+    try std.testing.expect(diag.kind == .network);
+    try std.testing.expectEqualStrings("Connection refused", diag.message().?);
+    try std.testing.expectEqualStrings("xai.chat", diag.provider.?);
+}

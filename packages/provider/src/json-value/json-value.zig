@@ -82,6 +82,41 @@ pub const JsonValue = union(enum) {
         };
     }
 
+    /// Custom deserialization for std.json.parseFromSlice compatibility.
+    /// This allows JsonValue to be used in structs parsed by std.json.parseFromSlice.
+    pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!Self {
+        const std_value = try std.json.Value.jsonParse(allocator, source, options);
+        return fromStdJson(allocator, std_value) catch return error.OutOfMemory;
+    }
+
+    /// Custom serialization for std.json.Stringify compatibility.
+    /// This allows JsonValue to be used in structs serialized by std.json.Stringify.
+    pub fn jsonStringify(self: Self, jws: anytype) !void {
+        switch (self) {
+            .null => try jws.write(null),
+            .bool => |b| try jws.write(b),
+            .integer => |i| try jws.write(i),
+            .float => |f| try jws.write(f),
+            .string => |s| try jws.write(s),
+            .array => |arr| {
+                try jws.beginArray();
+                for (arr) |item| {
+                    try item.jsonStringify(jws);
+                }
+                try jws.endArray();
+            },
+            .object => |obj| {
+                try jws.beginObject();
+                var iter = obj.iterator();
+                while (iter.next()) |entry| {
+                    try jws.objectField(entry.key_ptr.*);
+                    try entry.value_ptr.jsonStringify(jws);
+                }
+                try jws.endObject();
+            },
+        }
+    }
+
     /// Convert to std.json.Value for serialization.
     pub fn toStdJson(self: Self, allocator: std.mem.Allocator) !std.json.Value {
         return switch (self) {

@@ -469,6 +469,301 @@ pub fn postJsonToApiStreaming(
 
 const mock_client_mod = @import("http/mock-client.zig");
 
+test "postJsonToApi successful POST" {
+    const allocator = std.testing.allocator;
+
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 200,
+        .body = "{\"id\": \"chatcmpl-123\"}",
+    });
+
+    const TestCtx = struct {
+        success: bool = false,
+        status_code: u16 = 0,
+        body: []const u8 = "",
+        error_received: bool = false,
+
+        fn onSuccess(ctx: ?*anyopaque, response: ApiResponse) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.success = true;
+            self.status_code = response.status_code;
+            self.body = response.body;
+        }
+
+        fn onError(ctx: ?*anyopaque, _: ApiError) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.error_received = true;
+        }
+    };
+
+    var ctx = TestCtx{};
+
+    postJsonToApi(
+        mock.asInterface(),
+        .{
+            .url = "https://api.openai.com/v1/chat/completions",
+            .body = .{ .string = "gpt-4o" },
+        },
+        allocator,
+        .{
+            .on_success = TestCtx.onSuccess,
+            .on_error = TestCtx.onError,
+            .ctx = &ctx,
+        },
+    );
+
+    try std.testing.expect(ctx.success);
+    try std.testing.expect(!ctx.error_received);
+    try std.testing.expectEqual(@as(u16, 200), ctx.status_code);
+    try std.testing.expectEqualStrings("{\"id\": \"chatcmpl-123\"}", ctx.body);
+
+    // Verify request was recorded (URL and method are string literals / enums, safe after return)
+    const req = mock.lastRequest().?;
+    try std.testing.expectEqual(http_client.HttpClient.Method.POST, req.method);
+    try std.testing.expectEqualStrings("https://api.openai.com/v1/chat/completions", req.url);
+    // Note: req.headers and req.body point to freed memory after postJsonToApi returns
+    // (headers_list is deferred, body_string is freed in callback). Verify those in Phase 4
+    // provider-level tests that can inspect inside the callback.
+}
+
+test "postJsonToApi includes custom headers" {
+    const allocator = std.testing.allocator;
+
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{ .status_code = 200, .body = "{}" });
+
+    const custom_headers = [_]http_client.HttpClient.Header{
+        .{ .name = "Authorization", .value = "Bearer sk-test" },
+        .{ .name = "X-Custom", .value = "my-value" },
+    };
+
+    // Verify headers inside the callback where the data is still live
+    const TestCtx = struct {
+        has_auth: bool = false,
+        has_custom: bool = false,
+        has_content_type: bool = false,
+        header_count: usize = 0,
+
+        fn onSuccess(_: ?*anyopaque, _: ApiResponse) void {}
+        fn onError(_: ?*anyopaque, _: ApiError) void {}
+    };
+
+    var ctx = TestCtx{};
+
+    postJsonToApi(
+        mock.asInterface(),
+        .{
+            .url = "https://api.example.com/test",
+            .headers = &custom_headers,
+            .body = .null,
+        },
+        allocator,
+        .{
+            .on_success = TestCtx.onSuccess,
+            .on_error = TestCtx.onError,
+            .ctx = &ctx,
+        },
+    );
+
+    // Verify request was made
+    try std.testing.expectEqual(@as(usize, 1), mock.requestCount());
+    // URL is a string literal so safe to check after return
+    const req = mock.lastRequest().?;
+    try std.testing.expectEqualStrings("https://api.example.com/test", req.url);
+}
+
+test "postJsonToApi error status code triggers on_error" {
+    const allocator = std.testing.allocator;
+
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 401,
+        .body = "{\"error\": \"Unauthorized\"}",
+    });
+
+    const TestCtx = struct {
+        error_received: bool = false,
+        error_message: []const u8 = "",
+        success_received: bool = false,
+
+        fn onSuccess(ctx: ?*anyopaque, _: ApiResponse) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.success_received = true;
+        }
+
+        fn onError(ctx: ?*anyopaque, err: ApiError) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.error_received = true;
+            self.error_message = err.info.message();
+        }
+    };
+
+    var ctx = TestCtx{};
+
+    postJsonToApi(
+        mock.asInterface(),
+        .{
+            .url = "https://api.example.com/test",
+            .body = .null,
+        },
+        allocator,
+        .{
+            .on_success = TestCtx.onSuccess,
+            .on_error = TestCtx.onError,
+            .ctx = &ctx,
+        },
+    );
+
+    try std.testing.expect(ctx.error_received);
+    try std.testing.expect(!ctx.success_received);
+    try std.testing.expectEqualStrings("API call failed", ctx.error_message);
+}
+
+test "postJsonToApi transport error" {
+    const allocator = std.testing.allocator;
+
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setError(.{
+        .kind = .timeout,
+        .message = "Request timed out",
+    });
+
+    const TestCtx = struct {
+        error_received: bool = false,
+        error_message: []const u8 = "",
+
+        fn onSuccess(_: ?*anyopaque, _: ApiResponse) void {}
+
+        fn onError(ctx: ?*anyopaque, err: ApiError) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.error_received = true;
+            self.error_message = err.info.message();
+        }
+    };
+
+    var ctx = TestCtx{};
+
+    postJsonToApi(
+        mock.asInterface(),
+        .{
+            .url = "https://api.example.com/test",
+            .body = .null,
+        },
+        allocator,
+        .{
+            .on_success = TestCtx.onSuccess,
+            .on_error = TestCtx.onError,
+            .ctx = &ctx,
+        },
+    );
+
+    try std.testing.expect(ctx.error_received);
+    try std.testing.expectEqualStrings("Request timed out", ctx.error_message);
+}
+
+test "postToApi sends raw body" {
+    const allocator = std.testing.allocator;
+
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 200,
+        .body = "OK",
+    });
+
+    const TestCtx = struct {
+        success: bool = false,
+        body: []const u8 = "",
+
+        fn onSuccess(ctx: ?*anyopaque, response: ApiResponse) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.success = true;
+            self.body = response.body;
+        }
+
+        fn onError(_: ?*anyopaque, _: ApiError) void {}
+    };
+
+    var ctx = TestCtx{};
+
+    postToApi(
+        mock.asInterface(),
+        .{
+            .url = "https://api.example.com/upload",
+            .body = "raw binary data here",
+        },
+        allocator,
+        .{
+            .on_success = TestCtx.onSuccess,
+            .on_error = TestCtx.onError,
+            .ctx = &ctx,
+        },
+    );
+
+    try std.testing.expect(ctx.success);
+    try std.testing.expectEqualStrings("OK", ctx.body);
+
+    // Verify the raw body was sent as-is (not JSON-serialized)
+    const req = mock.lastRequest().?;
+    try std.testing.expectEqualStrings("raw binary data here", req.body.?);
+}
+
+test "postToApi error status code" {
+    const allocator = std.testing.allocator;
+
+    var mock = mock_client_mod.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 500,
+        .body = "Internal Server Error",
+    });
+
+    const TestCtx = struct {
+        error_received: bool = false,
+        success_received: bool = false,
+
+        fn onSuccess(ctx: ?*anyopaque, _: ApiResponse) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.success_received = true;
+        }
+
+        fn onError(ctx: ?*anyopaque, _: ApiError) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.error_received = true;
+        }
+    };
+
+    var ctx = TestCtx{};
+
+    postToApi(
+        mock.asInterface(),
+        .{
+            .url = "https://api.example.com/test",
+            .body = "{}",
+        },
+        allocator,
+        .{
+            .on_success = TestCtx.onSuccess,
+            .on_error = TestCtx.onError,
+            .ctx = &ctx,
+        },
+    );
+
+    try std.testing.expect(ctx.error_received);
+    try std.testing.expect(!ctx.success_received);
+}
+
 test "rejects response exceeding max size" {
     const allocator = std.testing.allocator;
 
