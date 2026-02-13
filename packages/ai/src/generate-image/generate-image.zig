@@ -209,30 +209,52 @@ pub fn generateImage(
     };
 
     // Convert provider images to ai-level GeneratedImage
-    const image_data = switch (gen_success.images) {
-        .base64 => |base64_images| base64_images,
-        .binary => |_| return GenerateImageError.ModelError, // TODO: handle binary
-    };
-
-    const images = allocator.alloc(GeneratedImage, image_data.len) catch return GenerateImageError.OutOfMemory;
-    for (image_data, 0..) |b64, i| {
-        images[i] = .{
-            .base64 = b64,
-            .mime_type = "image/png",
-        };
+    switch (gen_success.images) {
+        .base64 => |base64_images| {
+            const images = allocator.alloc(GeneratedImage, base64_images.len) catch return GenerateImageError.OutOfMemory;
+            for (base64_images, 0..) |b64, i| {
+                images[i] = .{
+                    .base64 = b64,
+                    .mime_type = "image/png",
+                };
+            }
+            return GenerateImageResult{
+                .images = images,
+                .usage = .{
+                    .images = @as(u32, @intCast(base64_images.len)),
+                },
+                .response = .{
+                    .model_id = gen_success.response.model_id,
+                    .timestamp = gen_success.response.timestamp,
+                },
+                .warnings = null,
+            };
+        },
+        .binary => |binary_images| {
+            const images = allocator.alloc(GeneratedImage, binary_images.len) catch return GenerateImageError.OutOfMemory;
+            const encoder = std.base64.standard.Encoder;
+            for (binary_images, 0..) |bin, i| {
+                const encoded_len = encoder.calcSize(bin.len);
+                const encoded = allocator.alloc(u8, encoded_len) catch return GenerateImageError.OutOfMemory;
+                _ = encoder.encode(encoded, bin);
+                images[i] = .{
+                    .base64 = encoded,
+                    .mime_type = "image/png",
+                };
+            }
+            return GenerateImageResult{
+                .images = images,
+                .usage = .{
+                    .images = @as(u32, @intCast(binary_images.len)),
+                },
+                .response = .{
+                    .model_id = gen_success.response.model_id,
+                    .timestamp = gen_success.response.timestamp,
+                },
+                .warnings = null,
+            };
+        },
     }
-
-    return GenerateImageResult{
-        .images = images,
-        .usage = .{
-            .images = @as(u32, @intCast(image_data.len)),
-        },
-        .response = .{
-            .model_id = gen_success.response.model_id,
-            .timestamp = gen_success.response.timestamp,
-        },
-        .warnings = null,
-    };
 }
 
 /// Get dimensions for a preset size
@@ -324,6 +346,74 @@ test "generateImage returns image from mock provider" {
 
     // Should have model ID from provider
     try std.testing.expectEqualStrings("mock-image", result.response.model_id);
+}
+
+test "generateImage encodes binary images to base64" {
+    const MockBinaryImageModel = struct {
+        const Self = @This();
+
+        const mock_binary = [_][]const u8{"Hello World"};
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-binary-image";
+        }
+
+        pub fn getMaxImagesPerCall(
+            _: *const Self,
+            callback: *const fn (?*anyopaque, ?u32) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, 4);
+        }
+
+        pub fn doGenerate(
+            _: *const Self,
+            _: provider_types.ImageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, ImageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .success = .{
+                .images = .{ .binary = &mock_binary },
+                .response = .{
+                    .timestamp = 1234567890,
+                    .model_id = "mock-binary-image",
+                },
+            } });
+        }
+    };
+
+    var mock = MockBinaryImageModel{};
+    var model = provider_types.asImageModel(MockBinaryImageModel, &mock);
+
+    const result = try generateImage(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "A beautiful sunset",
+    });
+    defer {
+        for (result.images) |img| {
+            if (img.base64) |b64| std.testing.allocator.free(b64);
+        }
+        std.testing.allocator.free(result.images);
+    }
+
+    // Should have 1 image
+    try std.testing.expectEqual(@as(usize, 1), result.images.len);
+
+    // Should have base64 data (encoded from binary "Hello World")
+    try std.testing.expect(result.images[0].base64 != null);
+    try std.testing.expectEqualStrings("SGVsbG8gV29ybGQ=", result.images[0].base64.?);
+
+    // Verify round-trip: decode the base64 back to original binary
+    const decoded = try result.images[0].getData(std.testing.allocator);
+    defer std.testing.allocator.free(decoded);
+    try std.testing.expectEqualStrings("Hello World", decoded);
+
+    try std.testing.expectEqualStrings("mock-binary-image", result.response.model_id);
 }
 
 test "GeneratedImage.getData decodes base64" {
