@@ -206,6 +206,160 @@ pub fn createStatusCodeErrorResponseHandler() ResponseHandler(errors.ApiCallErro
     };
 }
 
+test "createStatusCodeErrorResponseHandler" {
+    const handler = createStatusCodeErrorResponseHandler();
+    const allocator = std.testing.allocator;
+
+    const result = handler.handler_fn(.{
+        .url = "https://api.openai.com/v1/chat/completions",
+        .request_body_values = null,
+        .status_code = 429,
+        .headers = &.{},
+        .body = "{\"error\": \"rate limited\"}",
+    }, allocator);
+
+    switch (result) {
+        .success => |s| {
+            try std.testing.expectEqualStrings("HTTP error", s.value.message());
+            try std.testing.expectEqualStrings("https://api.openai.com/v1/chat/completions", s.value.url());
+            try std.testing.expectEqual(@as(?u16, 429), s.value.statusCode());
+            try std.testing.expectEqualStrings("{\"error\": \"rate limited\"}", s.value.responseBody().?);
+        },
+        .failure => unreachable,
+    }
+}
+
+test "createStatusCodeErrorResponseHandler 500" {
+    const handler = createStatusCodeErrorResponseHandler();
+    const allocator = std.testing.allocator;
+
+    const result = handler.handler_fn(.{
+        .url = "https://api.example.com/test",
+        .request_body_values = null,
+        .status_code = 500,
+        .headers = &.{},
+        .body = "Internal Server Error",
+    }, allocator);
+
+    switch (result) {
+        .success => |s| {
+            try std.testing.expectEqual(@as(?u16, 500), s.value.statusCode());
+            try std.testing.expectEqualStrings("Internal Server Error", s.value.responseBody().?);
+        },
+        .failure => unreachable,
+    }
+}
+
+test "createJsonErrorResponseHandler empty body" {
+    const handler = createJsonErrorResponseHandler(
+        void,
+        struct {
+            fn toMessage(_: void) []const u8 {
+                return "error";
+            }
+        }.toMessage,
+        null,
+    );
+
+    const result = handler.handler_fn(.{
+        .url = "https://api.example.com/test",
+        .request_body_values = null,
+        .status_code = 500,
+        .headers = &.{},
+        .body = "",
+    }, std.testing.allocator);
+
+    switch (result) {
+        .success => |s| {
+            try std.testing.expectEqualStrings("Empty error response", s.value.message());
+            try std.testing.expectEqual(@as(?u16, 500), s.value.statusCode());
+        },
+        .failure => unreachable,
+    }
+}
+
+test "createJsonErrorResponseHandler malformed JSON" {
+    const handler = createJsonErrorResponseHandler(
+        void,
+        struct {
+            fn toMessage(_: void) []const u8 {
+                return "error";
+            }
+        }.toMessage,
+        null,
+    );
+
+    const result = handler.handler_fn(.{
+        .url = "https://api.example.com/test",
+        .request_body_values = null,
+        .status_code = 400,
+        .headers = &.{},
+        .body = "{not valid json}",
+    }, std.testing.allocator);
+
+    switch (result) {
+        .success => |s| {
+            try std.testing.expectEqualStrings("Failed to parse error response", s.value.message());
+            try std.testing.expectEqual(@as(?u16, 400), s.value.statusCode());
+        },
+        .failure => unreachable,
+    }
+}
+
+test "createJsonErrorResponseHandler whitespace body" {
+    const handler = createJsonErrorResponseHandler(
+        void,
+        struct {
+            fn toMessage(_: void) []const u8 {
+                return "error";
+            }
+        }.toMessage,
+        null,
+    );
+
+    const result = handler.handler_fn(.{
+        .url = "https://api.example.com/test",
+        .request_body_values = null,
+        .status_code = 502,
+        .headers = &.{},
+        .body = "   \n\t  ",
+    }, std.testing.allocator);
+
+    switch (result) {
+        .success => |s| {
+            try std.testing.expectEqualStrings("Empty error response", s.value.message());
+            try std.testing.expectEqual(@as(?u16, 502), s.value.statusCode());
+        },
+        .failure => unreachable,
+    }
+}
+
+test "createBinaryResponseHandler with headers" {
+    const handler = createBinaryResponseHandler();
+
+    const response_headers = [_]http_client.HttpClient.Header{
+        .{ .name = "Content-Type", .value = "audio/mpeg" },
+        .{ .name = "Content-Length", .value = "1024" },
+    };
+
+    const result = handler.handler_fn(.{
+        .url = "https://api.example.com/audio",
+        .request_body_values = null,
+        .status_code = 200,
+        .headers = &response_headers,
+        .body = "fake audio bytes",
+    }, std.testing.allocator);
+
+    switch (result) {
+        .success => |s| {
+            try std.testing.expectEqualStrings("fake audio bytes", s.value);
+            try std.testing.expect(s.response_headers != null);
+            try std.testing.expectEqual(@as(usize, 2), s.response_headers.?.len);
+        },
+        .failure => unreachable,
+    }
+}
+
 test "createBinaryResponseHandler" {
     const handler = createBinaryResponseHandler();
 

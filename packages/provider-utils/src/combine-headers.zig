@@ -96,7 +96,10 @@ pub fn combineHeadersWithContentType(
     });
 }
 
-/// Add authorization header to existing headers
+/// Add authorization header to existing headers.
+/// Caller owns the returned slice (free with `allocator.free(result)`).
+/// The Authorization header's value is heap-allocated via `allocPrint`;
+/// caller must also free it (see `addBearerToken` test for cleanup pattern).
 pub fn addAuthorizationHeader(
     allocator: std.mem.Allocator,
     existing_headers: ?[]const http_client.HttpClient.Header,
@@ -115,7 +118,8 @@ pub fn addAuthorizationHeader(
     });
 }
 
-/// Add bearer token authorization
+/// Add bearer token authorization.
+/// Caller owns the returned slice and the Authorization header's value (heap-allocated).
 pub fn addBearerToken(
     allocator: std.mem.Allocator,
     existing_headers: ?[]const http_client.HttpClient.Header,

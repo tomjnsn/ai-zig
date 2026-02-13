@@ -68,7 +68,12 @@ pub const AnthropicMessagesLanguageModel = struct {
             return;
         };
 
-        callback(context, .{ .success = result });
+        callback(context, .{ .success = .{
+            .content = result.content,
+            .finish_reason = result.finish_reason,
+            .usage = result.usage,
+            .warnings = result.warnings,
+        } });
     }
 
     fn doGenerateInternal(
@@ -269,7 +274,7 @@ pub const AnthropicMessagesLanguageModel = struct {
                         .tool_call = .{
                             .tool_call_id = try result_allocator.dupe(u8, tc.id),
                             .tool_name = try result_allocator.dupe(u8, tc.name),
-                            .input = try tc.input.clone(result_allocator),
+                            .input = try tc.input.stringify(result_allocator),
                         },
                     });
                 },
@@ -278,7 +283,7 @@ pub const AnthropicMessagesLanguageModel = struct {
                         .tool_call = .{
                             .tool_call_id = try result_allocator.dupe(u8, tc.id),
                             .tool_name = try result_allocator.dupe(u8, tc.name),
-                            .input = try tc.input.clone(result_allocator),
+                            .input = try tc.input.stringify(result_allocator),
                         },
                     });
                 },
@@ -419,32 +424,28 @@ pub const AnthropicMessagesLanguageModel = struct {
         };
 
         // Make the streaming request
-        http_client.postStream(url, headers, body, request_allocator, struct {
-            fn onChunk(ctx: *anyopaque, chunk: []const u8) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.processChunk(chunk) catch |err| {
-                    state.callbacks.on_error(state.callbacks.ctx, err);
-                };
-            }
-            fn onComplete(ctx: *anyopaque) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.finish();
-            }
-            fn onError(ctx: *anyopaque, err: anyerror) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.callbacks.on_error(state.callbacks.ctx, err);
-            }
-        }.onChunk, struct {
-            fn onComplete(ctx: *anyopaque) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.finish();
-            }
-        }.onComplete, struct {
-            fn onError(ctx: *anyopaque, err: anyerror) void {
-                const state = @as(*StreamState, @ptrCast(@alignCast(ctx)));
-                state.callbacks.on_error(state.callbacks.ctx, err);
-            }
-        }.onError, &stream_state);
+        try http_client.postStream(url, headers, body, request_allocator, .{
+            .on_chunk = struct {
+                fn onChunk(ctx: ?*anyopaque, chunk: []const u8) void {
+                    const state: *StreamState = @ptrCast(@alignCast(ctx));
+                    state.processChunk(chunk) catch {};
+                }
+            }.onChunk,
+            .on_complete = struct {
+                fn onComplete(ctx: ?*anyopaque) void {
+                    const state: *StreamState = @ptrCast(@alignCast(ctx));
+                    state.finish();
+                }
+            }.onComplete,
+            .on_error = struct {
+                fn onError(ctx: ?*anyopaque, err: provider_utils.HttpClient.HttpError) void {
+                    _ = err;
+                    const state: *StreamState = @ptrCast(@alignCast(ctx));
+                    state.callbacks.on_error(state.callbacks.ctx, error.ApiCallError);
+                }
+            }.onError,
+            .ctx = &stream_state,
+        });
     }
 
     /// Convert to LanguageModelV3 interface
@@ -680,7 +681,7 @@ const StreamState = struct {
                             .tool_call = .{
                                 .tool_call_id = block.tool_call_id orelse "",
                                 .tool_name = block.tool_name orelse "",
-                                .input = json_value.JsonValue.parse(self.result_allocator, block.input.items) catch .{ .object = json_value.JsonObject.init(self.result_allocator) },
+                                .input = self.result_allocator.dupe(u8, block.input.items) catch "",
                             },
                         });
                     },
@@ -711,7 +712,8 @@ const StreamState = struct {
                 self.finish_reason = .@"error";
                 self.callbacks.on_part(self.callbacks.ctx, .{
                     .@"error" = .{
-                        .error_value = .{ .message = err.message },
+                        .err = error.ApiError,
+                        .message = err.message,
                     },
                 });
             }
@@ -801,4 +803,220 @@ test "Anthropic config buildUrl" {
     defer allocator.free(url);
 
     try std.testing.expectEqualStrings("https://api.anthropic.com/v1/messages", url);
+}
+
+// ============================================================================
+// Mock-HTTP integration tests
+// ============================================================================
+
+fn makeTestConfig(mock: *provider_utils.MockHttpClient) config_mod.AnthropicConfig {
+    return .{
+        .provider = "anthropic.messages",
+        .base_url = "https://api.anthropic.com/v1",
+        .headers_fn = struct {
+            fn getHeaders(_: *const config_mod.AnthropicConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
+                return std.StringHashMap([]const u8).init(alloc);
+            }
+        }.getHeaders,
+        .http_client = mock.asInterface(),
+    };
+}
+
+test "ErrorDiagnostic populated on HTTP 429 rate limit" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 429,
+        .body = "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded\"}}",
+    });
+
+    var model = AnthropicMessagesLanguageModel.init(allocator, "claude-sonnet-4-5", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    // Should have failed
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    // Diagnostic should be populated
+    try std.testing.expectEqual(@as(?u16, 429), diag.status_code);
+    try std.testing.expect(diag.kind == .rate_limit);
+    try std.testing.expect(diag.is_retryable);
+    try std.testing.expectEqualStrings("anthropic.messages", diag.provider.?);
+}
+
+test "ErrorDiagnostic populated on HTTP 401 authentication error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 401,
+        .body = "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"Invalid API key\"}}",
+    });
+
+    var model = AnthropicMessagesLanguageModel.init(allocator, "claude-sonnet-4-5", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    try std.testing.expectEqual(@as(?u16, 401), diag.status_code);
+    try std.testing.expect(diag.kind == .authentication);
+    try std.testing.expect(!diag.is_retryable);
+}
+
+test "ErrorDiagnostic populated on HTTP 500 server error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 500,
+        .body = "Internal Server Error",
+    });
+
+    var model = AnthropicMessagesLanguageModel.init(allocator, "claude-sonnet-4-5", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    try std.testing.expectEqual(@as(?u16, 500), diag.status_code);
+    try std.testing.expect(diag.kind == .server_error);
+    try std.testing.expect(diag.is_retryable);
+}
+
+test "ErrorDiagnostic populated on network error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setError(.{
+        .kind = .connection_failed,
+        .message = "Connection refused",
+    });
+
+    var model = AnthropicMessagesLanguageModel.init(allocator, "claude-sonnet-4-5", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    try std.testing.expect(diag.kind == .network);
+    try std.testing.expectEqualStrings("Connection refused", diag.message().?);
+    try std.testing.expectEqualStrings("anthropic.messages", diag.provider.?);
 }

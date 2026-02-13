@@ -95,8 +95,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).empty;
-        std.json.stringify(request_body, .{}, body_buffer.writer(request_allocator)) catch |err| {
+        const body_str = std.json.Stringify.valueAlloc(request_allocator, request_body, .{}) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -123,6 +122,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
         // Create context for callback
         const ResponseContext = struct {
             response_body: ?[]const u8 = null,
+            response_status_code: ?u16 = null,
             response_error: ?provider_utils.HttpError = null,
         };
         var response_ctx = ResponseContext{};
@@ -133,13 +133,14 @@ pub const GoogleGenerativeAILanguageModel = struct {
                 .method = .POST,
                 .url = url,
                 .headers = header_list.items,
-                .body = body_buffer.items,
+                .body = body_str,
             },
             request_allocator,
             struct {
                 fn onResponse(ctx: ?*anyopaque, response: provider_utils.HttpResponse) void {
                     const rctx: *ResponseContext = @ptrCast(@alignCast(ctx.?));
                     rctx.response_body = response.body;
+                    rctx.response_status_code = response.status_code;
                 }
             }.onResponse,
             struct {
@@ -151,7 +152,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
             &response_ctx,
         );
 
-        // Check for errors
+        // Check for network errors
         if (response_ctx.response_error) |http_err| {
             if (call_options.error_diagnostic) |diag| {
                 diag.provider = self.config.provider;
@@ -170,6 +171,18 @@ pub const GoogleGenerativeAILanguageModel = struct {
             callback(callback_context, .{ .failure = error.NoResponse });
             return;
         };
+
+        // Check for non-2xx status codes
+        if (response_ctx.response_status_code) |status_code| {
+            if (status_code < 200 or status_code >= 300) {
+                if (call_options.error_diagnostic) |diag| {
+                    diag.provider = self.config.provider;
+                    diag.populateFromResponse(status_code, response_body);
+                }
+                callback(callback_context, .{ .failure = error.ApiCallError });
+                return;
+            }
+        }
 
         // Parse response
         const parsed = response_types.GoogleGenerateContentResponse.fromJson(request_allocator, response_body) catch {
@@ -208,12 +221,11 @@ pub const GoogleGenerativeAILanguageModel = struct {
                             if (part.functionCall) |fc| {
                                 var args_str: []const u8 = "{}";
                                 if (fc.args) |args| {
-                                    var args_buffer = std.ArrayList(u8).empty;
-                                    std.json.stringify(args, .{}, args_buffer.writer(request_allocator)) catch |err| {
+                                    const serialized = std.json.Stringify.valueAlloc(request_allocator, args, .{}) catch |err| {
                                         callback(callback_context, .{ .failure = err });
                                         return;
                                     };
-                                    args_str = result_allocator.dupe(u8, args_buffer.items) catch |err| {
+                                    args_str = result_allocator.dupe(u8, serialized) catch |err| {
                                         callback(callback_context, .{ .failure = err });
                                         return;
                                     };
@@ -242,13 +254,10 @@ pub const GoogleGenerativeAILanguageModel = struct {
         }
 
         // Extract usage
-        var usage = lm.LanguageModelV3Usage{
-            .prompt_tokens = 0,
-            .completion_tokens = 0,
-        };
+        var usage = lm.LanguageModelV3Usage.init();
         if (response.usageMetadata) |meta| {
-            if (meta.promptTokenCount) |ptc| usage.prompt_tokens = ptc;
-            if (meta.candidatesTokenCount) |ctc| usage.completion_tokens = ctc;
+            if (meta.promptTokenCount) |ptc| usage.input_tokens.total = ptc;
+            if (meta.candidatesTokenCount) |ctc| usage.output_tokens.total = ctc;
         }
 
         // Get finish reason
@@ -256,7 +265,10 @@ pub const GoogleGenerativeAILanguageModel = struct {
         if (response.candidates) |candidates| {
             if (candidates.len > 0) {
                 if (candidates[0].finishReason) |fr| {
-                    finish_reason = map_finish.mapGoogleGenerativeAIFinishReason(fr);
+                    const has_tool_calls = for (content.items) |c| {
+                        if (c == .tool_call) break true;
+                    } else false;
+                    finish_reason = map_finish.mapGoogleGenerativeAIFinishReason(fr, has_tool_calls);
                 }
             }
         }
@@ -278,7 +290,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
         request_allocator: std.mem.Allocator,
         is_text_active: bool = false,
         finish_reason: lm.LanguageModelV3FinishReason = .unknown,
-        usage: lm.LanguageModelV3Usage = .{ .prompt_tokens = 0, .completion_tokens = 0 },
+        usage: lm.LanguageModelV3Usage = lm.LanguageModelV3Usage.init(),
         partial_line: std.ArrayList(u8),
 
         fn init(
@@ -342,25 +354,24 @@ pub const GoogleGenerativeAILanguageModel = struct {
                                     if (part.text) |text| {
                                         // Emit text_start if not active
                                         if (!self.is_text_active) {
-                                            self.callbacks.on_part(self.callbacks.ctx, .{ .text_start = {} });
+                                            self.callbacks.on_part(self.callbacks.ctx, .{ .text_start = .{ .id = "text" } });
                                             self.is_text_active = true;
                                         }
                                         // Emit text delta
                                         const text_copy = self.result_allocator.dupe(u8, text) catch continue;
                                         self.callbacks.on_part(self.callbacks.ctx, .{
-                                            .text_delta = .{ .text_delta = text_copy },
+                                            .text_delta = .{ .id = "text", .delta = text_copy },
                                         });
                                     }
 
                                     if (part.functionCall) |fc| {
                                         var args_str: []const u8 = "{}";
                                         if (fc.args) |args| {
-                                            var args_buffer = std.ArrayList(u8).empty;
-                                            std.json.stringify(args, .{}, args_buffer.writer(self.request_allocator)) catch |err| {
+                                            const serialized = std.json.Stringify.valueAlloc(self.request_allocator, args, .{}) catch |err| {
                                                 self.callbacks.on_error(self.callbacks.ctx, err);
                                                 return;
                                             };
-                                            args_str = self.result_allocator.dupe(u8, args_buffer.items) catch "{}";
+                                            args_str = self.result_allocator.dupe(u8, serialized) catch "{}";
                                         }
                                         self.callbacks.on_part(self.callbacks.ctx, .{
                                             .tool_call = .{
@@ -375,15 +386,15 @@ pub const GoogleGenerativeAILanguageModel = struct {
                         }
 
                         if (candidate.finishReason) |fr| {
-                            self.finish_reason = map_finish.mapGoogleGenerativeAIFinishReason(fr);
+                            self.finish_reason = map_finish.mapGoogleGenerativeAIFinishReason(fr, false);
                         }
                     }
                 }
 
                 // Extract usage
                 if (response.usageMetadata) |meta| {
-                    if (meta.promptTokenCount) |ptc| self.usage.prompt_tokens = ptc;
-                    if (meta.candidatesTokenCount) |ctc| self.usage.completion_tokens = ctc;
+                    if (meta.promptTokenCount) |ptc| self.usage.input_tokens.total = ptc;
+                    if (meta.candidatesTokenCount) |ctc| self.usage.output_tokens.total = ctc;
                 }
             }
         }
@@ -391,7 +402,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
         fn finish(self: *StreamState) void {
             // Emit text_end if text was active
             if (self.is_text_active) {
-                self.callbacks.on_part(self.callbacks.ctx, .{ .text_end = {} });
+                self.callbacks.on_part(self.callbacks.ctx, .{ .text_end = .{ .id = "text" } });
             }
 
             // Emit finish part
@@ -454,8 +465,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).empty;
-        std.json.stringify(request_body, .{}, body_buffer.writer(request_allocator)) catch |err| {
+        const body_str = std.json.Stringify.valueAlloc(request_allocator, request_body, .{}) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
             arena.deinit();
             return;
@@ -491,7 +501,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
                 .method = .POST,
                 .url = url,
                 .headers = header_list.items,
-                .body = body_buffer.items,
+                .body = body_str,
             },
             request_allocator,
             .{
@@ -602,7 +612,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
             .json => |json_fmt| {
                 try gen_config.put("responseMimeType", .{ .string = "application/json" });
                 if (json_fmt.schema) |schema| {
-                    try gen_config.put("responseSchema", schema);
+                    try gen_config.put("responseSchema", try schema.toStdJson(allocator));
                 }
             },
             .text => {},
@@ -629,7 +639,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
                 var decl_obj = std.json.ObjectMap.init(allocator);
                 try decl_obj.put("name", .{ .string = decl.name });
                 try decl_obj.put("description", .{ .string = decl.description });
-                try decl_obj.put("parameters", decl.parameters);
+                try decl_obj.put("parameters", try decl.parameters.toStdJson(allocator));
                 try func_decls_array.append(.{ .object = decl_obj });
             }
 
@@ -787,4 +797,218 @@ test "Google response parsing integration" {
     try std.testing.expect(response.usageMetadata != null);
     try std.testing.expectEqual(@as(u64, 10), response.usageMetadata.?.promptTokenCount.?);
     try std.testing.expectEqual(@as(u64, 5), response.usageMetadata.?.candidatesTokenCount.?);
+}
+
+// ============================================================================
+// Mock-HTTP integration tests
+// ============================================================================
+
+fn makeTestConfig(mock: *provider_utils.MockHttpClient) config_mod.GoogleGenerativeAIConfig {
+    return .{
+        .provider = "google.generative-ai",
+        .base_url = "https://generativelanguage.googleapis.com/v1beta",
+        .headers_fn = struct {
+            fn getHeaders(_: *const config_mod.GoogleGenerativeAIConfig, alloc: std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8) {
+                return std.StringHashMap([]const u8).init(alloc);
+            }
+        }.getHeaders,
+        .http_client = mock.asInterface(),
+    };
+}
+
+test "ErrorDiagnostic populated on HTTP 429 rate limit" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 429,
+        .body = "{\"error\":{\"code\":429,\"message\":\"Resource exhausted\",\"status\":\"RESOURCE_EXHAUSTED\"}}",
+    });
+
+    var model = GoogleGenerativeAILanguageModel.init(allocator, "gemini-2.0-flash", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    try std.testing.expectEqual(@as(?u16, 429), diag.status_code);
+    try std.testing.expect(diag.kind == .rate_limit);
+    try std.testing.expect(diag.is_retryable);
+    try std.testing.expectEqualStrings("google.generative-ai", diag.provider.?);
+}
+
+test "ErrorDiagnostic populated on HTTP 401 authentication error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 401,
+        .body = "{\"error\":{\"code\":401,\"message\":\"API key not valid\",\"status\":\"UNAUTHENTICATED\"}}",
+    });
+
+    var model = GoogleGenerativeAILanguageModel.init(allocator, "gemini-2.0-flash", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    try std.testing.expectEqual(@as(?u16, 401), diag.status_code);
+    try std.testing.expect(diag.kind == .authentication);
+    try std.testing.expect(!diag.is_retryable);
+}
+
+test "ErrorDiagnostic populated on HTTP 500 server error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setResponse(.{
+        .status_code = 500,
+        .body = "Internal Server Error",
+    });
+
+    var model = GoogleGenerativeAILanguageModel.init(allocator, "gemini-2.0-flash", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    try std.testing.expectEqual(@as(?u16, 500), diag.status_code);
+    try std.testing.expect(diag.kind == .server_error);
+    try std.testing.expect(diag.is_retryable);
+}
+
+test "ErrorDiagnostic populated on network error" {
+    const allocator = std.testing.allocator;
+    const ErrorDiagnostic = @import("provider").ErrorDiagnostic;
+
+    var mock = provider_utils.MockHttpClient.init(allocator);
+    defer mock.deinit();
+
+    mock.setError(.{
+        .kind = .connection_failed,
+        .message = "Connection refused",
+    });
+
+    var model = GoogleGenerativeAILanguageModel.init(allocator, "gemini-2.0-flash", makeTestConfig(&mock));
+
+    const msg = try lm.userTextMessage(allocator, "Hello");
+    defer allocator.free(msg.content.user);
+
+    var diag: ErrorDiagnostic = .{};
+    var lm_model = model.asLanguageModel();
+
+    const CallbackCtx = struct { result: ?lm.LanguageModelV3.GenerateResult = null };
+    var cb_ctx = CallbackCtx{};
+
+    lm_model.doGenerate(
+        .{
+            .prompt = &.{msg},
+            .error_diagnostic = &diag,
+        },
+        allocator,
+        struct {
+            fn onResult(ctx: ?*anyopaque, result: lm.LanguageModelV3.GenerateResult) void {
+                const c: *CallbackCtx = @ptrCast(@alignCast(ctx.?));
+                c.result = result;
+            }
+        }.onResult,
+        @as(?*anyopaque, @ptrCast(&cb_ctx)),
+    );
+
+    try std.testing.expect(cb_ctx.result != null);
+    switch (cb_ctx.result.?) {
+        .failure => {},
+        .success => try std.testing.expect(false),
+    }
+
+    try std.testing.expect(diag.kind == .network);
+    try std.testing.expectEqualStrings("Connection refused", diag.message().?);
+    try std.testing.expectEqualStrings("google.generative-ai", diag.provider.?);
 }
