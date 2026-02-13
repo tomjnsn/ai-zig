@@ -566,7 +566,9 @@ const StreamState = struct {
                     continue;
                 }
 
-                const parsed = std.json.parseFromSlice(api.OpenAIChatChunk, self.result_allocator, json_data, .{}) catch |err| {
+                const parsed = std.json.parseFromSlice(api.OpenAIChatChunk, self.result_allocator, json_data, .{
+                    .ignore_unknown_fields = true,
+                }) catch |err| {
                     // Report JSON parse error to caller but continue processing subsequent chunks
                     self.callbacks.on_part(self.callbacks.ctx, .{
                         .@"error" = .{ .err = err, .message = "Failed to parse SSE chunk JSON" },
