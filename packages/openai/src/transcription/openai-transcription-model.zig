@@ -224,6 +224,7 @@ pub const OpenAITranscriptionModel = struct {
         const parsed = std.json.parseFromSlice(api.OpenAITranscriptionResponse, request_allocator, response_body, .{}) catch {
             return error.InvalidResponse;
         };
+        defer parsed.deinit();
         const response = parsed.value;
 
         // Convert segments to tm.TranscriptionSegment

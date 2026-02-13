@@ -341,6 +341,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
                     json_data,
                     .{ .ignore_unknown_fields = true },
                 ) catch return;
+                defer parsed.deinit();
                 const response = parsed.value;
 
                 // Process response

@@ -215,6 +215,7 @@ pub const OpenAICompatibleChatLanguageModel = struct {
         }) catch {
             return error.InvalidResponse;
         };
+        defer parsed.deinit();
         const response = parsed.value;
 
         // Extract content
@@ -594,6 +595,7 @@ const StreamState = struct {
                 }) catch {
                     continue;
                 };
+                defer parsed.deinit();
                 const chunk = parsed.value;
 
                 // Handle usage

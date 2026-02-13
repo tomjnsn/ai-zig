@@ -213,6 +213,7 @@ pub const OpenAIChatLanguageModel = struct {
         }) catch {
             return error.InvalidResponse;
         };
+        defer parsed.deinit();
         const response = parsed.value;
 
         // Extract content
@@ -572,6 +573,7 @@ const StreamState = struct {
                     });
                     continue;
                 };
+                defer parsed.deinit();
                 const chunk = parsed.value;
 
                 // Handle error chunks
@@ -994,6 +996,7 @@ test "OpenAI request serialization - basic" {
 
     // Parse back to verify structure
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, body, .{});
+    defer parsed.deinit();
 
     const obj = parsed.value.object;
     try std.testing.expectEqualStrings("gpt-4o", obj.get("model").?.string);

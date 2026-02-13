@@ -187,6 +187,7 @@ pub const OpenAIEmbeddingModel = struct {
         const parsed = std.json.parseFromSlice(api.OpenAITextEmbeddingResponse, request_allocator, response_body, .{}) catch {
             return error.InvalidResponse;
         };
+        defer parsed.deinit();
         const response = parsed.value;
 
         // Extract embeddings and sort by index
