@@ -181,6 +181,7 @@ pub const OpenAIImageModel = struct {
         const parsed = std.json.parseFromSlice(api.OpenAIImageResponse, request_allocator, response_body, .{}) catch {
             return error.InvalidResponse;
         };
+        defer parsed.deinit();
         const response = parsed.value;
 
         // Extract images as base64

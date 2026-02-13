@@ -240,6 +240,7 @@ pub const AnthropicMessagesLanguageModel = struct {
         const parsed = std.json.parseFromSlice(api.AnthropicMessagesResponse, request_allocator, response_body, .{}) catch {
             return error.InvalidResponse;
         };
+        defer parsed.deinit();
         const response = parsed.value;
 
         // Extract content
@@ -563,6 +564,7 @@ const StreamState = struct {
                     });
                     continue;
                 };
+                defer parsed.deinit();
                 const chunk = parsed.value;
 
                 try self.processAnthropicChunk(chunk, event_type);
