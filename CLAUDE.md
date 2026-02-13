@@ -27,6 +27,17 @@ This is a fork. Remotes:
 
 **IMPORTANT**: Always use `-R tomjnsn/ai-zig` or rely on `gh repo set-default` when creating PRs/issues with `gh`. Never create PRs or issues on the upstream `evmts/ai-zig` repo.
 
+### Commit & PR Discipline
+
+Every code change **must** be committed and submitted as a PR before moving on to the next task. Follow this workflow:
+
+1. **Issue first**: Create a GitHub issue describing the work (or reference an existing one).
+2. **Branch per issue**: Create a feature/fix branch from `main` (e.g., `fix/47-use-after-free`, `feature/51-tool-execution`).
+3. **Commit immediately**: Commit changes as soon as a logical unit of work is done. Do not accumulate uncommitted changes across multiple tasks.
+4. **PR per branch**: Open a PR referencing the issue (e.g., `Fixes #47`). Include a summary and test plan.
+5. **Merge before next task**: Merge the PR (or get it approved) before starting the next piece of work.
+6. **Never leave uncommitted work**: At the end of any session, all changes must be committed, pushed, and in a PR. No orphaned diffs on `main`.
+
 ## Architecture
 
 ### Package Hierarchy

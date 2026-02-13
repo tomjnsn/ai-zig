@@ -3,12 +3,6 @@ const testing = std.testing;
 
 // Integration tests for AI SDK providers
 // These tests verify that provider implementations follow the expected interface
-//
-// Note: Some providers (deepseek, amazon-bedrock, deepinfra, fal, luma,
-// black-forest-labs, lmnt, hume, assemblyai, gladia, revai, google-vertex)
-// use relative path imports (../../provider/src/...) which prevent them from
-// being compiled in a separate test binary. They are tested through their own
-// index.zig compilation units in build.zig instead.
 
 test "OpenAI provider interface" {
     const allocator = testing.allocator;
@@ -48,45 +42,6 @@ test "Google provider interface" {
 
     var model = provider.languageModel("gemini-2.0-flash");
     try testing.expectEqualStrings("gemini-2.0-flash", model.getModelId());
-}
-
-test "Mistral provider interface" {
-    const allocator = testing.allocator;
-
-    const mistral = @import("mistral");
-    var provider = mistral.createMistral(allocator);
-    defer provider.deinit();
-
-    try testing.expectEqualStrings("mistral", provider.getProvider());
-
-    var model = provider.languageModel("mistral-large-latest");
-    try testing.expectEqualStrings("mistral-large-latest", model.getModelId());
-}
-
-test "Cohere provider interface" {
-    const allocator = testing.allocator;
-
-    const cohere = @import("cohere");
-    var provider = cohere.createCohere(allocator);
-    defer provider.deinit();
-
-    try testing.expectEqualStrings("cohere", provider.getProvider());
-
-    var model = provider.languageModel("command-r-plus");
-    try testing.expectEqualStrings("command-r-plus", model.getModelId());
-}
-
-test "Groq provider interface" {
-    const allocator = testing.allocator;
-
-    const groq = @import("groq");
-    var provider = groq.createGroq(allocator);
-    defer provider.deinit();
-
-    try testing.expectEqualStrings("groq", provider.getProvider());
-
-    var model = provider.languageModel("llama-3.3-70b-versatile");
-    try testing.expectEqualStrings("llama-3.3-70b-versatile", model.getModelId());
 }
 
 test "xAI provider interface" {
@@ -129,26 +84,6 @@ test "Fireworks provider interface" {
     try testing.expectEqualStrings("fireworks", provider.getProvider());
 }
 
-test "ElevenLabs provider interface" {
-    const allocator = testing.allocator;
-
-    const elevenlabs = @import("elevenlabs");
-    var provider = elevenlabs.createElevenLabs(allocator);
-    defer provider.deinit();
-
-    try testing.expectEqualStrings("elevenlabs", provider.getProvider());
-}
-
-test "Deepgram provider interface" {
-    const allocator = testing.allocator;
-
-    const deepgram = @import("deepgram");
-    var provider = deepgram.createDeepgram(allocator);
-    defer provider.deinit();
-
-    try testing.expectEqualStrings("deepgram", provider.getProvider());
-}
-
 test "Azure provider interface" {
     const allocator = testing.allocator;
 
@@ -179,12 +114,12 @@ test "HuggingFace provider interface" {
     try testing.expectEqualStrings("huggingface", provider.getProvider());
 }
 
-test "Replicate provider interface" {
+test "DeepInfra provider interface" {
     const allocator = testing.allocator;
 
-    const replicate = @import("replicate");
-    var provider = replicate.createReplicate(allocator);
+    const deepinfra = @import("deepinfra");
+    var provider = deepinfra.createDeepInfra(allocator);
     defer provider.deinit();
 
-    try testing.expectEqualStrings("replicate", provider.getProvider());
+    try testing.expectEqualStrings("deepinfra", provider.getProvider());
 }

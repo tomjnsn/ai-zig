@@ -7,8 +7,6 @@
 const std = @import("std");
 const ai = @import("ai");
 const openai = @import("openai");
-const deepseek = @import("deepseek");
-const groq = @import("groq");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -70,66 +68,7 @@ pub fn main() !void {
     std.debug.print("  defer result.deinit();\n", .{});
     std.debug.print("\n", .{});
 
-    // Example 4: Using DeepSeek Reasoner
-    std.debug.print("4. Using DeepSeek Reasoner\n", .{});
-    std.debug.print("---------------------------\n", .{});
-    std.debug.print("DeepSeek's reasoning model supports thinking configuration:\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  var provider = deepseek.createDeepSeek(allocator);\n", .{});
-    std.debug.print("  defer provider.deinit();\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  var model = provider.languageModel(\"deepseek-reasoner\");\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  // Enable thinking/reasoning\n", .{});
-    std.debug.print("  const result = try ai.generateText(allocator, .{{\n", .{});
-    std.debug.print("      .model = &model,\n", .{});
-    std.debug.print("      .prompt = \"Explain quantum entanglement.\",\n", .{});
-    std.debug.print("      .settings = .{{\n", .{});
-    std.debug.print("          .provider_options = .{{\n", .{});
-    std.debug.print("              .deepseek = .{{\n", .{});
-    std.debug.print("                  .thinking = .{{ .type = .enabled }},\n", .{});
-    std.debug.print("              }},\n", .{});
-    std.debug.print("          }},\n", .{});
-    std.debug.print("      }},\n", .{});
-    std.debug.print("  }});\n", .{});
-    std.debug.print("\n", .{});
-
-    // Example 5: Using Groq Reasoning Models
-    std.debug.print("5. Using Groq Reasoning Models\n", .{});
-    std.debug.print("-------------------------------\n", .{});
-    std.debug.print("Groq hosts several reasoning models with special options:\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  var provider = groq.createGroq(allocator);\n", .{});
-    std.debug.print("  defer provider.deinit();\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  var model = provider.languageModel(\"deepseek-r1-distill-llama-70b\");\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  const result = try ai.generateText(allocator, .{{\n", .{});
-    std.debug.print("      .model = &model,\n", .{});
-    std.debug.print("      .prompt = \"Prove the Pythagorean theorem.\",\n", .{});
-    std.debug.print("      .settings = .{{\n", .{});
-    std.debug.print("          .provider_options = .{{\n", .{});
-    std.debug.print("              .groq = .{{\n", .{});
-    std.debug.print("                  .reasoning_format = .parsed,  // or .raw, .hidden\n", .{});
-    std.debug.print("                  .reasoning_effort = .high,    // or .low, .medium, .default\n", .{});
-    std.debug.print("              }},\n", .{});
-    std.debug.print("          }},\n", .{});
-    std.debug.print("      }},\n", .{});
-    std.debug.print("  }});\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("Reasoning format options:\n", .{});
-    std.debug.print("  - .parsed: Structured reasoning tokens\n", .{});
-    std.debug.print("  - .raw: Raw reasoning output\n", .{});
-    std.debug.print("  - .hidden: Reasoning not returned (still used internally)\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("Reasoning effort levels:\n", .{});
-    std.debug.print("  - .low: Faster, less thorough reasoning\n", .{});
-    std.debug.print("  - .medium: Balanced reasoning depth\n", .{});
-    std.debug.print("  - .high: More thorough, potentially slower\n", .{});
-    std.debug.print("  - .default: Provider's default setting\n", .{});
-    std.debug.print("\n", .{});
-
-    // Example 6: Accessing Reasoning Text
+    // Example 4: Accessing Reasoning Text
     std.debug.print("6. Accessing Reasoning Text\n", .{});
     std.debug.print("----------------------------\n", .{});
     std.debug.print("After generation, you can access the reasoning process:\n", .{});
@@ -210,22 +149,10 @@ pub fn main() !void {
     std.debug.print("  const is_reasoning_openai = openai.isReasoningModel(\"o3-mini\");\n", .{});
     std.debug.print("  // Returns: true for o1/o3 series\n", .{});
     std.debug.print("\n", .{});
-    std.debug.print("  // DeepSeek models\n", .{});
-    std.debug.print("  const is_reasoning_deepseek = deepseek.supportsReasoning(\"deepseek-reasoner\");\n", .{});
-    std.debug.print("  // Returns: true for deepseek-reasoner\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  // Groq models\n", .{});
-    std.debug.print("  const is_reasoning_groq = groq.supportsReasoning(\"deepseek-r1-distill-llama-70b\");\n", .{});
-    std.debug.print("  // Returns: true for R1/QwQ models\n", .{});
-    std.debug.print("\n", .{});
-
     // Demonstrate the actual functions
     std.debug.print("Testing reasoning detection:\n", .{});
     std.debug.print("  openai.isReasoningModel(\"o3-mini\"): {}\n", .{openai.isReasoningModel("o3-mini")});
     std.debug.print("  openai.isReasoningModel(\"gpt-4o\"): {}\n", .{openai.isReasoningModel("gpt-4o")});
-    std.debug.print("  deepseek.supportsReasoning(\"deepseek-reasoner\"): {}\n", .{deepseek.supportsReasoning("deepseek-reasoner")});
-    std.debug.print("  deepseek.supportsReasoning(\"deepseek-chat\"): {}\n", .{deepseek.supportsReasoning("deepseek-chat")});
-    std.debug.print("  groq.supportsReasoning(\"qwen-qwq-32b\"): {}\n", .{groq.supportsReasoning("qwen-qwq-32b")});
     std.debug.print("\n", .{});
 
     // Example 10: Best Practices

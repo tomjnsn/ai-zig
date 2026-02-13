@@ -44,6 +44,7 @@ pub const GoogleVertexProvider = struct {
     settings: GoogleVertexProviderSettings,
     base_url: []const u8,
     api_key: ?[]const u8,
+    base_url_allocated: bool,
 
     pub const specification_version = "v3";
 
@@ -57,13 +58,17 @@ pub const GoogleVertexProvider = struct {
         const location = settings.location orelse getLocationFromEnv() orelse "us-central1";
 
         // Build base URL
+        var base_url_allocated = false;
         const base_url = settings.base_url orelse blk: {
             if (api_key != null) {
                 break :blk config_mod.express_mode_base_url;
             }
             // For non-express mode, we need to build the URL
-            // This would normally be done with the project/location
-            break :blk buildDefaultBaseUrl(allocator, project, location) catch config_mod.express_mode_base_url;
+            const url = buildDefaultBaseUrl(allocator, project, location) catch {
+                break :blk config_mod.express_mode_base_url;
+            };
+            base_url_allocated = true;
+            break :blk url;
         };
 
         return .{
@@ -71,13 +76,15 @@ pub const GoogleVertexProvider = struct {
             .settings = settings,
             .base_url = base_url,
             .api_key = api_key,
+            .base_url_allocated = base_url_allocated,
         };
     }
 
     /// Deinitialize the provider
     pub fn deinit(self: *Self) void {
-        _ = self;
-        // Clean up any allocated resources
+        if (self.base_url_allocated) {
+            self.allocator.free(self.base_url);
+        }
     }
 
     /// Get the provider name
