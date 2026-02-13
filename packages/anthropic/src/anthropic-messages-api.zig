@@ -26,6 +26,47 @@ pub const AnthropicMessagesResponse = struct {
         web_search_tool_result: WebSearchToolResultBlock,
         web_fetch_tool_result: WebFetchToolResultBlock,
         code_execution_tool_result: CodeExecutionToolResultBlock,
+
+        /// Custom JSON parsing: dispatch on "type" field instead of union wrapper key.
+        pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
+            const value = try std.json.Value.jsonParse(allocator, source, options);
+            return jsonParseFromValue(allocator, value, options);
+        }
+
+        pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, options: std.json.ParseOptions) std.json.ParseFromValueError!@This() {
+            const obj = switch (source) {
+                .object => |o| o,
+                else => return error.UnexpectedToken,
+            };
+            const type_val = obj.get("type") orelse return error.MissingField;
+            const type_str = switch (type_val) {
+                .string => |s| s,
+                else => return error.UnexpectedToken,
+            };
+
+            if (std.mem.eql(u8, type_str, "text"))
+                return .{ .text = try std.json.innerParseFromValue(TextBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "thinking"))
+                return .{ .thinking = try std.json.innerParseFromValue(ThinkingBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "redacted_thinking"))
+                return .{ .redacted_thinking = try std.json.innerParseFromValue(RedactedThinkingBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "tool_use"))
+                return .{ .tool_use = try std.json.innerParseFromValue(ToolUseBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "server_tool_use"))
+                return .{ .server_tool_use = try std.json.innerParseFromValue(ServerToolUseBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "mcp_tool_use"))
+                return .{ .mcp_tool_use = try std.json.innerParseFromValue(McpToolUseBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "mcp_tool_result"))
+                return .{ .mcp_tool_result = try std.json.innerParseFromValue(McpToolResultBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "web_search_tool_result"))
+                return .{ .web_search_tool_result = try std.json.innerParseFromValue(WebSearchToolResultBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "web_fetch_tool_result"))
+                return .{ .web_fetch_tool_result = try std.json.innerParseFromValue(WebFetchToolResultBlock, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "code_execution_tool_result"))
+                return .{ .code_execution_tool_result = try std.json.innerParseFromValue(CodeExecutionToolResultBlock, allocator, source, options) }
+            else
+                return error.UnknownField;
+        }
     };
 
     pub const TextBlock = struct {
@@ -161,6 +202,13 @@ pub const AnthropicMessagesRequest = struct {
         image: ImageContent,
         tool_use: ToolUseContent,
         tool_result: ToolResultContent,
+
+        /// Serialize the active variant directly (no wrapper key).
+        pub fn jsonStringify(self: @This(), jw: anytype) !void {
+            switch (self) {
+                inline else => |v| try jw.write(v),
+            }
+        }
     };
 
     pub const TextContent = struct {
@@ -218,6 +266,13 @@ pub const AnthropicMessagesRequest = struct {
         any: AnyToolChoice,
         tool: SpecificToolChoice,
         none: NoneToolChoice,
+
+        /// Serialize the active variant directly (no wrapper key).
+        pub fn jsonStringify(self: @This(), jw: anytype) !void {
+            switch (self) {
+                inline else => |v| try jw.write(v),
+            }
+        }
     };
 
     pub const AutoToolChoice = struct {
@@ -275,6 +330,37 @@ pub const AnthropicMessagesChunk = struct {
         redacted_thinking: RedactedThinkingBlockStart,
         tool_use: ToolUseBlockStart,
         server_tool_use: ServerToolUseBlockStart,
+
+        /// Custom JSON parsing: dispatch on "type" field.
+        pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
+            const value = try std.json.Value.jsonParse(allocator, source, options);
+            return jsonParseFromValue(allocator, value, options);
+        }
+
+        pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, options: std.json.ParseOptions) std.json.ParseFromValueError!@This() {
+            const obj = switch (source) {
+                .object => |o| o,
+                else => return error.UnexpectedToken,
+            };
+            const type_val = obj.get("type") orelse return error.MissingField;
+            const type_str = switch (type_val) {
+                .string => |s| s,
+                else => return error.UnexpectedToken,
+            };
+
+            if (std.mem.eql(u8, type_str, "text"))
+                return .{ .text = try std.json.innerParseFromValue(TextBlockStart, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "thinking"))
+                return .{ .thinking = try std.json.innerParseFromValue(ThinkingBlockStart, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "redacted_thinking"))
+                return .{ .redacted_thinking = try std.json.innerParseFromValue(RedactedThinkingBlockStart, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "tool_use"))
+                return .{ .tool_use = try std.json.innerParseFromValue(ToolUseBlockStart, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "server_tool_use"))
+                return .{ .server_tool_use = try std.json.innerParseFromValue(ServerToolUseBlockStart, allocator, source, options) }
+            else
+                return error.UnknownField;
+        }
     };
 
     pub const TextBlockStart = struct {
@@ -311,6 +397,39 @@ pub const AnthropicMessagesChunk = struct {
         signature_delta: SignatureDelta,
         citations_delta: CitationsDelta,
         message_delta: MessageDelta,
+
+        /// Custom JSON parsing: dispatch on "type" field.
+        pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
+            const value = try std.json.Value.jsonParse(allocator, source, options);
+            return jsonParseFromValue(allocator, value, options);
+        }
+
+        pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, options: std.json.ParseOptions) std.json.ParseFromValueError!@This() {
+            const obj = switch (source) {
+                .object => |o| o,
+                else => return error.UnexpectedToken,
+            };
+            const type_val = obj.get("type") orelse return error.MissingField;
+            const type_str = switch (type_val) {
+                .string => |s| s,
+                else => return error.UnexpectedToken,
+            };
+
+            if (std.mem.eql(u8, type_str, "text_delta"))
+                return .{ .text_delta = try std.json.innerParseFromValue(TextDelta, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "thinking_delta"))
+                return .{ .thinking_delta = try std.json.innerParseFromValue(ThinkingDelta, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "input_json_delta"))
+                return .{ .input_json_delta = try std.json.innerParseFromValue(InputJsonDelta, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "signature_delta"))
+                return .{ .signature_delta = try std.json.innerParseFromValue(SignatureDelta, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "citations_delta"))
+                return .{ .citations_delta = try std.json.innerParseFromValue(CitationsDelta, allocator, source, options) }
+            else if (std.mem.eql(u8, type_str, "message_delta"))
+                return .{ .message_delta = try std.json.innerParseFromValue(MessageDelta, allocator, source, options) }
+            else
+                return error.UnknownField;
+        }
     };
 
     pub const TextDelta = struct {
@@ -383,4 +502,56 @@ test "convertAnthropicMessagesUsage" {
     try std.testing.expectEqual(@as(u64, 50), result.output_tokens.total.?);
     try std.testing.expectEqual(@as(u64, 20), result.input_tokens.cache_read.?);
     try std.testing.expectEqual(@as(u64, 10), result.input_tokens.cache_write.?);
+}
+
+test "ContentBlock jsonParse dispatches on type field" {
+    const allocator = std.testing.allocator;
+    const json_str = "{\"type\":\"text\",\"text\":\"Hello\"}";
+    const parsed = try std.json.parseFromSlice(
+        AnthropicMessagesResponse.ContentBlock,
+        allocator,
+        json_str,
+        .{ .ignore_unknown_fields = true },
+    );
+    defer parsed.deinit();
+
+    switch (parsed.value) {
+        .text => |t| try std.testing.expectEqualStrings("Hello", t.text),
+        else => return error.UnexpectedToken,
+    }
+}
+
+test "MessageContent jsonStringify produces flat object" {
+    const allocator = std.testing.allocator;
+    const content = AnthropicMessagesRequest.MessageContent{
+        .text = .{ .text = "Hello" },
+    };
+    const serialized = try std.json.Stringify.valueAlloc(allocator, content, .{});
+    defer allocator.free(serialized);
+
+    // Should be flat: {"type":"text","text":"Hello"}, not wrapped: {"text":{"type":"text","text":"Hello"}}
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, serialized, .{});
+    defer parsed.deinit();
+
+    const obj = parsed.value.object;
+    const type_val = obj.get("type") orelse return error.MissingField;
+    try std.testing.expectEqualStrings("text", type_val.string);
+    const text_val = obj.get("text") orelse return error.MissingField;
+    try std.testing.expectEqualStrings("Hello", text_val.string);
+}
+
+test "ToolChoice jsonStringify produces flat object" {
+    const allocator = std.testing.allocator;
+    const choice = AnthropicMessagesRequest.ToolChoice{
+        .auto = .{ .type = "auto" },
+    };
+    const serialized = try std.json.Stringify.valueAlloc(allocator, choice, .{});
+    defer allocator.free(serialized);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, serialized, .{});
+    defer parsed.deinit();
+
+    const obj = parsed.value.object;
+    const type_val = obj.get("type") orelse return error.MissingField;
+    try std.testing.expectEqualStrings("auto", type_val.string);
 }
