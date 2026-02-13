@@ -9,6 +9,9 @@ pub const AnthropicConfig = struct {
     /// Base URL for API calls
     base_url: []const u8,
 
+    /// API key for authenticating requests (preferred over env var)
+    api_key: ?[]const u8 = null,
+
     /// Function to get headers
     headers_fn: *const fn (*const AnthropicConfig, std.mem.Allocator) error{OutOfMemory}!std.StringHashMap([]const u8),
 
@@ -31,7 +34,7 @@ pub const AnthropicConfig = struct {
 };
 
 /// Default Anthropic API version
-pub const anthropic_version = "2024-06-01";
+pub const anthropic_version = "2023-06-01";
 
 /// Default base URL
 pub const default_base_url = "https://api.anthropic.com/v1";
