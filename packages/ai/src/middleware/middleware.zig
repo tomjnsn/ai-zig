@@ -212,16 +212,47 @@ pub fn createLoggingMiddleware() struct { request: RequestMiddleware, response: 
     };
 }
 
-/// Rate limiting middleware
+/// Rate limiting middleware using a fixed-window algorithm.
+/// Store a RateLimitMiddleware instance in the MiddlewareContext before use.
 pub const RateLimitMiddleware = struct {
     requests_per_minute: u32,
-    last_request_time: i64 = 0,
+    window_start: i64 = 0,
     request_count: u32 = 0,
 
+    const context_key = "rate_limit_middleware";
+
+    pub fn store(self: *RateLimitMiddleware, context: *MiddlewareContext) !void {
+        try context.set(context_key, @ptrCast(self));
+    }
+
+    fn retrieve(context: *MiddlewareContext) ?*RateLimitMiddleware {
+        if (context.get(context_key)) |ptr| {
+            return @ptrCast(@alignCast(ptr));
+        }
+        return null;
+    }
+
+    /// Request middleware function that enforces the rate limit.
     pub fn process(request: *MiddlewareRequest, context: *MiddlewareContext) anyerror!void {
         _ = request;
-        _ = context;
-        // TODO: Implement rate limiting logic
+        const self = retrieve(context) orelse return;
+
+        const now = std.time.timestamp();
+        const window_elapsed = now - self.window_start;
+
+        // Start a new window if 60 seconds have passed
+        if (window_elapsed >= 60) {
+            self.window_start = now;
+            self.request_count = 0;
+        }
+
+        // Check if we've exceeded the limit
+        if (self.request_count >= self.requests_per_minute) {
+            context.cancelled = true;
+            return error.RateLimitExceeded;
+        }
+
+        self.request_count += 1;
     }
 };
 
@@ -266,4 +297,77 @@ test "MiddlewareChain add middleware" {
 
     try chain.useRequest(testMiddleware);
     try std.testing.expectEqual(@as(usize, 1), chain.request_middleware.items.len);
+}
+
+test "RateLimitMiddleware allows requests within limit" {
+    const allocator = std.testing.allocator;
+
+    var rate_limiter = RateLimitMiddleware{ .requests_per_minute = 5 };
+    var context = MiddlewareContext.init(allocator);
+    defer context.deinit();
+    try rate_limiter.store(&context);
+
+    var request = MiddlewareRequest{};
+
+    // Should allow up to 5 requests
+    for (0..5) |_| {
+        try RateLimitMiddleware.process(&request, &context);
+    }
+
+    try std.testing.expectEqual(@as(u32, 5), rate_limiter.request_count);
+    try std.testing.expect(!context.cancelled);
+}
+
+test "RateLimitMiddleware rejects requests over limit" {
+    const allocator = std.testing.allocator;
+
+    var rate_limiter = RateLimitMiddleware{ .requests_per_minute = 2 };
+    var context = MiddlewareContext.init(allocator);
+    defer context.deinit();
+    try rate_limiter.store(&context);
+
+    var request = MiddlewareRequest{};
+
+    // Allow first 2
+    try RateLimitMiddleware.process(&request, &context);
+    try RateLimitMiddleware.process(&request, &context);
+
+    // Third should fail
+    const result = RateLimitMiddleware.process(&request, &context);
+    try std.testing.expectError(error.RateLimitExceeded, result);
+    try std.testing.expect(context.cancelled);
+}
+
+test "RateLimitMiddleware resets after window" {
+    const allocator = std.testing.allocator;
+
+    var rate_limiter = RateLimitMiddleware{ .requests_per_minute = 1 };
+    var context = MiddlewareContext.init(allocator);
+    defer context.deinit();
+    try rate_limiter.store(&context);
+
+    var request = MiddlewareRequest{};
+
+    // First request should work
+    try RateLimitMiddleware.process(&request, &context);
+
+    // Simulate window expiry by setting window_start to 61 seconds ago
+    rate_limiter.window_start = std.time.timestamp() - 61;
+
+    // Should work again after window reset
+    context.cancelled = false;
+    try RateLimitMiddleware.process(&request, &context);
+    try std.testing.expectEqual(@as(u32, 1), rate_limiter.request_count);
+}
+
+test "RateLimitMiddleware no-op without stored context" {
+    const allocator = std.testing.allocator;
+
+    var context = MiddlewareContext.init(allocator);
+    defer context.deinit();
+
+    var request = MiddlewareRequest{};
+
+    // Should not error when no rate limiter is stored
+    try RateLimitMiddleware.process(&request, &context);
 }
