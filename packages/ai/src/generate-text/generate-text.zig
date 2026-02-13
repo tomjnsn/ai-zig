@@ -1,6 +1,7 @@
 const std = @import("std");
 const provider_types = @import("provider");
 const LanguageModelV3 = provider_types.LanguageModelV3;
+const prompt_types = provider_types.language_model.language_model_v3_prompt;
 
 /// Finish reasons for text generation
 pub const FinishReason = enum {
@@ -161,6 +162,30 @@ pub const GenerateTextResult = struct {
             allocator.free(step.text);
             allocator.free(step.response.id);
             allocator.free(step.response.model_id);
+            // Free tool call data (only allocated for tool steps)
+            if (step.tool_calls.len > 0) {
+                for (step.tool_calls) |tc| {
+                    allocator.free(tc.tool_call_id);
+                    allocator.free(tc.tool_name);
+                    switch (tc.input) {
+                        .string => |s| allocator.free(s),
+                        else => {},
+                    }
+                }
+                allocator.free(step.tool_calls);
+            }
+            // Free tool result data
+            if (step.tool_results.len > 0) {
+                for (step.tool_results) |tr| {
+                    allocator.free(tr.tool_call_id);
+                    allocator.free(tr.tool_name);
+                    switch (tr.output) {
+                        .string => |s| allocator.free(s),
+                        else => {},
+                    }
+                }
+                allocator.free(step.tool_results);
+            }
         }
         allocator.free(self.steps);
     }
@@ -315,6 +340,7 @@ pub fn generateText(
     var steps = std.ArrayList(StepResult).empty;
     errdefer steps.deinit(allocator);
     var total_usage = LanguageModelUsage{};
+    var extra_prompt_msgs = std.ArrayList(provider_types.LanguageModelV3Message).empty;
 
     // Multi-step loop
     var step_count: u32 = 0;
@@ -345,6 +371,11 @@ pub fn generateText(
                 },
                 .parts => {},
             }
+        }
+
+        // Append accumulated tool exchange messages from previous steps
+        for (extra_prompt_msgs.items) |msg| {
+            prompt_msgs.append(arena_allocator, msg) catch return GenerateTextError.OutOfMemory;
         }
 
         // Build call options
@@ -415,6 +446,77 @@ pub fn generateText(
             .unknown => .unknown,
         };
 
+        // Extract tool calls and execute tools if applicable
+        var owned_tool_calls: []const ToolCall = &[_]ToolCall{};
+        var owned_tool_results: []const ToolResult = &[_]ToolResult{};
+
+        if (finish_reason == .tool_calls) {
+            var tool_calls_builder = std.ArrayList(ToolCall).empty;
+            var tool_results_builder = std.ArrayList(ToolResult).empty;
+
+            for (gen_success.content) |content_item| {
+                switch (content_item) {
+                    .tool_call => |tc| {
+                        const owned_tc_id = allocator.dupe(u8, tc.tool_call_id) catch return GenerateTextError.OutOfMemory;
+                        const owned_tc_name = allocator.dupe(u8, tc.tool_name) catch return GenerateTextError.OutOfMemory;
+                        const owned_tc_input = allocator.dupe(u8, tc.input) catch return GenerateTextError.OutOfMemory;
+
+                        tool_calls_builder.append(allocator, .{
+                            .tool_call_id = owned_tc_id,
+                            .tool_name = owned_tc_name,
+                            .input = .{ .string = owned_tc_input },
+                        }) catch return GenerateTextError.OutOfMemory;
+
+                        // Execute tool if available
+                        if (options.tools) |tools| {
+                            for (tools) |tool_def| {
+                                if (std.mem.eql(u8, tool_def.name, tc.tool_name)) {
+                                    if (tool_def.execute) |execute_fn| {
+                                        const parsed_input = std.json.parseFromSlice(
+                                            std.json.Value,
+                                            arena_allocator,
+                                            tc.input,
+                                            .{},
+                                        ) catch {
+                                            tool_results_builder.append(allocator, .{
+                                                .tool_call_id = allocator.dupe(u8, tc.tool_call_id) catch return GenerateTextError.OutOfMemory,
+                                                .tool_name = allocator.dupe(u8, tc.tool_name) catch return GenerateTextError.OutOfMemory,
+                                                .output = .{ .string = allocator.dupe(u8, "Failed to parse tool input") catch return GenerateTextError.OutOfMemory },
+                                            }) catch return GenerateTextError.OutOfMemory;
+                                            break;
+                                        };
+
+                                        const exec_result = execute_fn(parsed_input.value, options.context) catch {
+                                            tool_results_builder.append(allocator, .{
+                                                .tool_call_id = allocator.dupe(u8, tc.tool_call_id) catch return GenerateTextError.OutOfMemory,
+                                                .tool_name = allocator.dupe(u8, tc.tool_name) catch return GenerateTextError.OutOfMemory,
+                                                .output = .{ .string = allocator.dupe(u8, "Tool execution failed") catch return GenerateTextError.OutOfMemory },
+                                            }) catch return GenerateTextError.OutOfMemory;
+                                            break;
+                                        };
+
+                                        const result_str = std.json.Stringify.valueAlloc(arena_allocator, exec_result, .{}) catch
+                                            return GenerateTextError.OutOfMemory;
+
+                                        tool_results_builder.append(allocator, .{
+                                            .tool_call_id = allocator.dupe(u8, tc.tool_call_id) catch return GenerateTextError.OutOfMemory,
+                                            .tool_name = allocator.dupe(u8, tc.tool_name) catch return GenerateTextError.OutOfMemory,
+                                            .output = .{ .string = allocator.dupe(u8, result_str) catch return GenerateTextError.OutOfMemory },
+                                        }) catch return GenerateTextError.OutOfMemory;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    else => {},
+                }
+            }
+
+            owned_tool_calls = tool_calls_builder.toOwnedSlice(allocator) catch return GenerateTextError.OutOfMemory;
+            owned_tool_results = tool_results_builder.toOwnedSlice(allocator) catch return GenerateTextError.OutOfMemory;
+        }
+
         const step_result = StepResult{
             .content = &[_]ContentPart{},
             .text = owned_text,
@@ -423,8 +525,8 @@ pub fn generateText(
                 .input_tokens = gen_success.usage.input_tokens.total,
                 .output_tokens = gen_success.usage.output_tokens.total,
             },
-            .tool_calls = &[_]ToolCall{},
-            .tool_results = &[_]ToolResult{},
+            .tool_calls = owned_tool_calls,
+            .tool_results = owned_tool_results,
             .response = .{
                 .id = owned_id,
                 .model_id = owned_model_id,
@@ -445,8 +547,39 @@ pub fn generateText(
             break;
         }
 
-        // Execute tools and add results to messages
-        // TODO: Implement tool execution
+        // Build provider-level messages for tool exchange in next iteration
+        // Assistant message with tool call parts
+        var assistant_parts = arena_allocator.alloc(prompt_types.AssistantPart, owned_tool_calls.len) catch return GenerateTextError.OutOfMemory;
+        for (owned_tool_calls, 0..) |tc, i| {
+            const input_json = provider_types.JsonValue.parse(arena_allocator, tc.input.string) catch
+                provider_types.JsonValue{ .string = tc.input.string };
+            assistant_parts[i] = .{ .tool_call = .{
+                .tool_call_id = tc.tool_call_id,
+                .tool_name = tc.tool_name,
+                .input = input_json,
+            } };
+        }
+        extra_prompt_msgs.append(arena_allocator, .{
+            .role = .assistant,
+            .content = .{ .assistant = assistant_parts },
+        }) catch return GenerateTextError.OutOfMemory;
+
+        // Tool result message
+        var tool_result_parts = arena_allocator.alloc(prompt_types.ToolResultPart, owned_tool_results.len) catch return GenerateTextError.OutOfMemory;
+        for (owned_tool_results, 0..) |tr, i| {
+            tool_result_parts[i] = .{
+                .tool_call_id = tr.tool_call_id,
+                .tool_name = tr.tool_name,
+                .output = .{ .text = .{ .value = switch (tr.output) {
+                    .string => |s| s,
+                    else => "null",
+                } } },
+            };
+        }
+        extra_prompt_msgs.append(arena_allocator, .{
+            .role = .tool,
+            .content = .{ .tool = tool_result_parts },
+        }) catch return GenerateTextError.OutOfMemory;
     }
 
     const final_step = if (steps.items.len > 0) steps.items[steps.items.len - 1] else StepResult{
@@ -972,4 +1105,127 @@ test "GenerateTextResult.hasToolCalls" {
         .steps = &.{},
     };
     try std.testing.expect(with_tools.hasToolCalls());
+}
+
+test "generateText executes tools in agentic loop" {
+    const MockToolModel = struct {
+        call_count: u32 = 0,
+
+        const Self = @This();
+
+        const tool_call_content = [_]provider_types.LanguageModelV3Content{
+            .{ .tool_call = provider_types.language_model.LanguageModelV3ToolCall.init(
+                "call-1",
+                "get_weather",
+                "{\"city\":\"London\"}",
+            ) },
+        };
+
+        const text_content = [_]provider_types.LanguageModelV3Content{
+            .{ .text = .{ .text = "The weather in London is sunny, 22C." } },
+        };
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-tool";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            self: *Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            self.call_count += 1;
+            if (self.call_count == 1) {
+                // First call: return tool call
+                callback(ctx, .{ .success = .{
+                    .content = &tool_call_content,
+                    .finish_reason = .tool_calls,
+                    .usage = provider_types.LanguageModelV3Usage.initWithTotals(10, 5),
+                } });
+            } else {
+                // Second call: return text response
+                callback(ctx, .{ .success = .{
+                    .content = &text_content,
+                    .finish_reason = .stop,
+                    .usage = provider_types.LanguageModelV3Usage.initWithTotals(15, 10),
+                } });
+            }
+        }
+
+        pub fn doStream(
+            _: *Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    const tool_execute = struct {
+        fn execute(_: std.json.Value, _: ?*anyopaque) anyerror!std.json.Value {
+            return .{ .string = "sunny, 22C" };
+        }
+    }.execute;
+
+    var mock = MockToolModel{};
+    var model = provider_types.asLanguageModel(MockToolModel, &mock);
+
+    const tools = [_]ToolDefinition{.{
+        .name = "get_weather",
+        .description = "Get weather for a city",
+        .parameters = .null,
+        .execute = tool_execute,
+    }};
+
+    var result = try generateText(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "What is the weather in London?",
+        .tools = &tools,
+        .max_steps = 3,
+    });
+    defer result.deinit(std.testing.allocator);
+
+    // Model should have been called twice (tool call + final response)
+    try std.testing.expectEqual(@as(u32, 2), mock.call_count);
+
+    // Final result should be from the second (text) step
+    try std.testing.expectEqualStrings("The weather in London is sunny, 22C.", result.text);
+    try std.testing.expectEqual(FinishReason.stop, result.finish_reason);
+
+    // Should have 2 steps
+    try std.testing.expectEqual(@as(usize, 2), result.steps.len);
+
+    // First step: tool call
+    try std.testing.expectEqual(FinishReason.tool_calls, result.steps[0].finish_reason);
+    try std.testing.expectEqual(@as(usize, 1), result.steps[0].tool_calls.len);
+    try std.testing.expectEqualStrings("get_weather", result.steps[0].tool_calls[0].tool_name);
+    try std.testing.expectEqualStrings("call-1", result.steps[0].tool_calls[0].tool_call_id);
+
+    // First step: tool result
+    try std.testing.expectEqual(@as(usize, 1), result.steps[0].tool_results.len);
+    try std.testing.expectEqualStrings("get_weather", result.steps[0].tool_results[0].tool_name);
+
+    // Second step: text response
+    try std.testing.expectEqual(FinishReason.stop, result.steps[1].finish_reason);
+    try std.testing.expectEqualStrings("The weather in London is sunny, 22C.", result.steps[1].text);
+
+    // Total usage should be sum of both steps
+    try std.testing.expectEqual(@as(?u64, 25), result.total_usage.input_tokens);
+    try std.testing.expectEqual(@as(?u64, 15), result.total_usage.output_tokens);
 }
