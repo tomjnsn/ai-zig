@@ -9,8 +9,6 @@ const ai = @import("ai");
 const openai = @import("openai");
 const anthropic = @import("anthropic");
 const google = @import("google");
-const groq = @import("groq");
-
 /// Provider configuration
 const ProviderInfo = struct {
     name: []const u8,
@@ -34,11 +32,6 @@ const providers_info = [_]ProviderInfo{
         .name = "Google",
         .model_id = "gemini-2.0-flash",
         .description = "Gemini 2.0 Flash - Google's fast model",
-    },
-    .{
-        .name = "Groq",
-        .model_id = "llama-3.3-70b-versatile",
-        .description = "Llama 3.3 70B - Fast inference on Groq",
     },
 };
 
@@ -103,20 +96,6 @@ pub fn main() !void {
         defer provider.deinit();
 
         var model = provider.languageModel("gemini-2.0-flash");
-        std.debug.print("Provider: {s}\n", .{provider.getProvider()});
-        std.debug.print("Model: {s}\n", .{model.getModelId()});
-        std.debug.print("Prompt: {s}\n", .{prompt});
-    }
-    std.debug.print("\n", .{});
-
-    // Groq (fast inference)
-    std.debug.print("Using Groq (llama-3.3-70b-versatile):\n", .{});
-    std.debug.print("--------------------------------------\n", .{});
-    {
-        var provider = groq.createGroq(allocator);
-        defer provider.deinit();
-
-        var model = provider.languageModel("llama-3.3-70b-versatile");
         std.debug.print("Provider: {s}\n", .{provider.getProvider()});
         std.debug.print("Model: {s}\n", .{model.getModelId()});
         std.debug.print("Prompt: {s}\n", .{prompt});

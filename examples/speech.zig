@@ -6,7 +6,6 @@
 const std = @import("std");
 const ai = @import("ai");
 const openai = @import("openai");
-const elevenlabs = @import("elevenlabs");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -45,30 +44,8 @@ pub fn main() !void {
     std.debug.print("  - verse   (Melodic, expressive)\n", .{});
     std.debug.print("\n", .{});
 
-    // Example 2: ElevenLabs Provider Setup
-    std.debug.print("2. ElevenLabs Provider\n", .{});
-    std.debug.print("----------------------\n", .{});
-
-    var elevenlabs_provider = elevenlabs.createElevenLabs(allocator);
-    defer elevenlabs_provider.deinit();
-
-    std.debug.print("Provider: {s}\n", .{elevenlabs_provider.getProvider()});
-    std.debug.print("\n", .{});
-    std.debug.print("Available ElevenLabs models:\n", .{});
-    std.debug.print("  - eleven_multilingual_v2 (Multilingual, 29 languages)\n", .{});
-    std.debug.print("  - eleven_turbo_v2_5      (Fastest, low latency)\n", .{});
-    std.debug.print("  - eleven_monolingual_v1  (English only, high quality)\n", .{});
-    std.debug.print("\n", .{});
-
-    std.debug.print("Voice settings (ElevenLabs specific):\n", .{});
-    std.debug.print("  - stability        (0.0-1.0, controls consistency)\n", .{});
-    std.debug.print("  - similarity_boost (0.0-1.0, controls voice matching)\n", .{});
-    std.debug.print("  - speed            (0.5-2.0, playback speed)\n", .{});
-    std.debug.print("  - volume           (0.0-1.0, output volume)\n", .{});
-    std.debug.print("\n", .{});
-
-    // Example 3: Audio Format Options
-    std.debug.print("3. Audio Format Options\n", .{});
+    // Example 2: Audio Format Options
+    std.debug.print("2. Audio Format Options\n", .{});
     std.debug.print("------------------------\n", .{});
 
     std.debug.print("Supported output formats:\n", .{});
@@ -127,28 +104,7 @@ pub fn main() !void {
     std.debug.print("  defer result.deinit(allocator);\n", .{});
     std.debug.print("\n", .{});
 
-    // Example 6: ElevenLabs Advanced Settings
-    std.debug.print("6. ElevenLabs Advanced Settings\n", .{});
-    std.debug.print("--------------------------------\n", .{});
-
-    std.debug.print("Using ElevenLabs with fine-tuned voice settings:\n", .{});
-    std.debug.print("\n", .{});
-    std.debug.print("  var elevenlabs_model = elevenlabs_provider.speechModel(\"eleven_turbo_v2_5\");\n", .{});
-    std.debug.print("  const result = try ai.generateSpeech(allocator, .{{\n", .{});
-    std.debug.print("      .model = &elevenlabs_model,\n", .{});
-    std.debug.print("      .text = \"High quality speech synthesis.\",\n", .{});
-    std.debug.print("      .voice = \"your-voice-id\",  // Use custom voice ID\n", .{});
-    std.debug.print("      .format = .mp3,\n", .{});
-    std.debug.print("      .voice_settings = .{{\n", .{});
-    std.debug.print("          .stability = 0.5,        // More variation\n", .{});
-    std.debug.print("          .similarity_boost = 0.8, // Higher fidelity\n", .{});
-    std.debug.print("          .speed = 1.0,            // Normal speed\n", .{});
-    std.debug.print("      }},\n", .{});
-    std.debug.print("  }});\n", .{});
-    std.debug.print("  defer result.deinit(allocator);\n", .{});
-    std.debug.print("\n", .{});
-
-    // Example 7: Stream Speech API
+    // Example 6: Stream Speech API
     std.debug.print("7. Stream Speech API\n", .{});
     std.debug.print("---------------------\n", .{});
 

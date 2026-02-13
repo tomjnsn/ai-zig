@@ -466,5 +466,16 @@ test "GoogleVertexImageModel init" {
     );
 
     try std.testing.expectEqualStrings("imagen-3.0-generate-001", model.getModelId());
-    try std.testing.expectEqual(@as(u32, 4), model.getMaxImagesPerCall());
+
+    // Verify max images via callback
+    const Ctx = struct {
+        result: ?u32 = null,
+        fn cb(ctx: ?*anyopaque, val: ?u32) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.result = val;
+        }
+    };
+    var ctx = Ctx{};
+    model.getMaxImagesPerCall(Ctx.cb, &ctx);
+    try std.testing.expectEqual(@as(?u32, 4), ctx.result);
 }
