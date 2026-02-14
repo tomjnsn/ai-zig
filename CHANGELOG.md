@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-14
+
+### Added
+
+- **Tool execution with agentic loop** — multi-step tool calling with configurable `max_steps` (#72)
+- **`generateObject`** — structured JSON output with schema validation (#73)
+- **`streamObject`** — incremental JSON parsing for streaming structured output (#74)
+- **Rate limiting middleware** — token bucket rate limiter for API calls (#71)
+- **`ErrorDiagnostic`** — rich error context (kind, message, status code) threaded through all providers (#35-#40)
+- **Live integration tests** — `generateText` and `streamText` tests against 5 real provider APIs (#42, #78)
+- **`scripts/test-live.sh`** — helper script to load `.env` and run live tests (#80)
+- **Binary image format** in `generateImage` (#68)
+- **Base64 audio decoding** in `generateSpeech` (#69)
+- **URL and file audio sources** in `transcribe` (#70)
+
+### Fixed
+
+- **Provider audit**: removed 16 non-functional providers (32 → 14 packages) (#63)
+- **Memory leaks**: added missing `parsed.deinit()` across all providers (#67)
+- **Anthropic**: JSON serialization/parsing for live API compatibility (#76)
+- **OpenAI streaming**: added `ignore_unknown_fields` to chunk parser (#78)
+- **Anthropic & Google**: `api_key` passthrough and version string (#65)
+- **HttpClient**: fixed `post()` and updated all provider call sites (#36)
+- **Azure**: corrected API URLs and endpoint construction (#49)
+- **Vtable stubs**: implemented `doStream` for all providers (#50)
+- **Use-after-free**: fixed lifetime issues in live test paths (#49)
+- Various Zig 0.15 compatibility fixes (parameter shadowing, var/const, relative imports) (#23-#28)
+
+### Changed
+
+- Consolidated to 14 working provider packages: OpenAI, Anthropic, Google, Google Vertex, Azure, xAI, Perplexity, Together AI, Fireworks, Cerebras, DeepInfra, HuggingFace, OpenAI Compatible, and provider-utils
+- Updated documentation: README, CLAUDE.md, `.env.example` (#80)
+- 825+ unit tests passing across all packages
+
 ## [0.1.0] - 2024-12-19
 
 ### Added
