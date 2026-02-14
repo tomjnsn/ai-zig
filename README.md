@@ -1,61 +1,36 @@
 # Zig AI SDK
 
-A comprehensive AI SDK for Zig, ported from the Vercel AI SDK. This SDK provides a unified interface for interacting with various AI providers.
+A comprehensive AI SDK for Zig, ported from the [Vercel AI SDK](https://sdk.vercel.ai). Provides a unified interface for interacting with multiple AI providers.
 
 ## Features
 
-- **Multiple Providers**: Support for 30+ AI providers
+- **Multiple Providers**: Support for 14 AI provider packages
 - **Streaming**: Callback-based streaming for real-time responses
-- **Tool Calling**: Full support for function/tool calling
-- **Structured Output**: Generate structured JSON objects
+- **Tool Calling**: Full support for function/tool calling with agentic loop
+- **Structured Output**: Generate and stream structured JSON objects with schema validation
 - **Embeddings**: Text embedding generation with similarity functions
-- **Image Generation**: Create images from text prompts
-- **Speech Synthesis**: Text-to-speech capabilities
-- **Transcription**: Speech-to-text capabilities
-- **Middleware**: Extensible request/response transformation
+- **Middleware**: Extensible request/response transformation (rate limiting, etc.)
 - **Memory Safe**: Uses arena allocators for efficient memory management
 - **Testable**: MockHttpClient for unit testing without network calls
 - **Type-Erased HTTP**: Pluggable HTTP client interface via vtables
 
 ## Supported Providers
 
-### Language Models
-- **OpenAI** - GPT-4, GPT-4o, o1, o3
-- **Anthropic** - Claude 3.5, Claude 4
-- **Google** - Gemini 2.0, Gemini 1.5
-- **Google Vertex AI** - Gemini on Vertex
-- **Azure OpenAI** - Azure-hosted OpenAI models
-- **Amazon Bedrock** - Claude, Titan, Llama
-- **Mistral** - Mistral Large, Codestral
-- **Cohere** - Command R+
-- **Groq** - Llama, Mixtral (fast inference)
-- **DeepSeek** - DeepSeek Chat, Reasoner
-- **xAI** - Grok
-- **Perplexity** - Online search models
-- **Together AI** - Various open models
-- **Fireworks** - Fast inference
-- **Cerebras** - Fast inference
-- **DeepInfra** - Various open models
-- **Replicate** - Model hosting
-- **HuggingFace** - Inference API
-- **OpenAI Compatible** - Any OpenAI-compatible API
-
-### Image Generation
-- **OpenAI** - DALL-E 3
-- **Fal** - FLUX, Stable Diffusion
-- **Luma** - Dream Machine
-- **Black Forest Labs** - FLUX Pro/Dev/Schnell
-- **Replicate** - Various models
-
-### Speech & Audio
-- **OpenAI** - TTS, Whisper
-- **ElevenLabs** - High-quality TTS
-- **LMNT** - Aurora, Blizzard voices
-- **Hume** - Empathic voice
-- **Deepgram** - Nova 2, Aura TTS
-- **AssemblyAI** - Transcription + LeMUR
-- **Gladia** - Transcription
-- **Rev AI** - Transcription
+| Provider | Package | Live Tested |
+|----------|---------|-------------|
+| OpenAI (GPT-4, GPT-4o, o1, o3) | `openai` | Yes |
+| Anthropic (Claude 3.5, Claude 4) | `anthropic` | Yes |
+| Google AI (Gemini 2.0, 1.5) | `google` | Yes |
+| Google Vertex AI | `google-vertex` | - |
+| Azure OpenAI | `azure` | Yes |
+| xAI (Grok) | `xai` | Yes |
+| Perplexity | `perplexity` | - |
+| Together AI | `togetherai` | - |
+| Fireworks | `fireworks` | - |
+| Cerebras | `cerebras` | - |
+| DeepInfra | `deepinfra` | - |
+| HuggingFace | `huggingface` | - |
+| OpenAI Compatible (any compatible API) | `openai-compatible` | - |
 
 ## Installation
 
@@ -64,7 +39,7 @@ Add to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .@"zig-ai-sdk" = .{
-        .url = "https://github.com/your-org/zig-ai-sdk/archive/v0.1.0.tar.gz",
+        .url = "https://github.com/evmts/ai-zig/archive/main.tar.gz",
         .hash = "...",
     },
 },
@@ -94,6 +69,7 @@ pub fn main() !void {
         .model = &model,
         .prompt = "What is the meaning of life?",
     });
+    defer result.deinit(allocator);
 
     std.debug.print("{s}\n", .{result.text});
 }
@@ -143,7 +119,7 @@ const tool = ai.Tool.create(.{
     .execute = struct {
         fn f(input: std.json.Value, _: ai.ToolExecutionContext) !ai.ToolExecutionResult {
             // Process weather request
-            return .{ .success = std.json.Value{ .string = "Sunny, 72°F" } };
+            return .{ .success = std.json.Value{ .string = "Sunny, 72F" } };
         }
     }.f,
 });
@@ -174,15 +150,22 @@ const similarity = ai.cosineSimilarity(result.embedding.values, other_embedding)
 ## Building
 
 ```bash
-# Build all packages
-zig build
-
-# Run tests
-zig build test
-
-# Run example
-zig build run-example
+zig build              # Build all packages
+zig build test         # Run all unit tests
+zig build test-live    # Run live provider integration tests (requires API keys)
+zig build run-example  # Run the example application
 ```
+
+### Live Integration Tests
+
+Live tests hit real provider APIs. Set up your keys and run:
+
+```bash
+cp .env.example .env   # Fill in your API keys
+./scripts/test-live.sh # Loads .env and runs live tests
+```
+
+Tests skip automatically for providers without keys configured. See [.env.example](.env.example) for required variables.
 
 ## Architecture
 
@@ -234,58 +217,39 @@ const result = try processRequest(arena.allocator());
 ## Project Structure
 
 ```
-zig-ai-sdk/
-├── build.zig           # Root build configuration
-├── build.zig.zon       # Package manifest
+ai-zig/
+├── build.zig              # Root build configuration
+├── build.zig.zon          # Package manifest
 ├── packages/
-│   ├── ai/             # High-level API (generateText, streamText, etc.)
-│   ├── provider/       # Core provider interfaces and types
-│   ├── provider-utils/ # HTTP client, streaming utilities
-│   ├── openai/         # OpenAI provider
-│   ├── anthropic/      # Anthropic provider
-│   ├── google/         # Google AI provider
-│   ├── google-vertex/  # Google Vertex AI provider
-│   ├── azure/          # Azure OpenAI provider
-│   ├── amazon-bedrock/ # Amazon Bedrock provider
-│   ├── mistral/        # Mistral provider
-│   ├── cohere/         # Cohere provider
-│   ├── groq/           # Groq provider
-│   ├── deepseek/       # DeepSeek provider
-│   ├── xai/            # xAI (Grok) provider
-│   ├── perplexity/     # Perplexity provider
-│   ├── togetherai/     # Together AI provider
-│   ├── fireworks/      # Fireworks provider
-│   ├── cerebras/       # Cerebras provider
-│   ├── deepinfra/      # DeepInfra provider
-│   ├── replicate/      # Replicate provider
-│   ├── huggingface/    # HuggingFace provider
-│   ├── openai-compatible/ # OpenAI-compatible base
-│   ├── elevenlabs/     # ElevenLabs speech provider
-│   ├── lmnt/           # LMNT speech provider
-│   ├── hume/           # Hume AI provider
-│   ├── deepgram/       # Deepgram transcription provider
-│   ├── assemblyai/     # AssemblyAI transcription provider
-│   ├── gladia/         # Gladia transcription provider
-│   ├── revai/          # Rev AI transcription provider
-│   ├── fal/            # Fal image provider
-│   ├── luma/           # Luma image provider
-│   └── black-forest-labs/ # Black Forest Labs (FLUX) provider
-├── examples/
-│   └── simple.zig      # Example usage
-└── tests/
-    └── integration/    # Integration tests
+│   ├── ai/                # High-level API (generateText, streamText, generateObject, etc.)
+│   ├── provider/          # Core provider interfaces and types
+│   ├── provider-utils/    # HTTP client, streaming utilities, SSE parsing
+│   ├── openai/            # OpenAI provider
+│   ├── openai-compatible/ # OpenAI-compatible base (shared by several providers)
+│   ├── anthropic/         # Anthropic provider
+│   ├── google/            # Google AI provider
+│   ├── google-vertex/     # Google Vertex AI provider
+│   ├── azure/             # Azure OpenAI provider
+│   ├── xai/               # xAI (Grok) provider
+│   ├── perplexity/        # Perplexity provider
+│   ├── togetherai/        # Together AI provider
+│   ├── fireworks/         # Fireworks provider
+│   ├── cerebras/          # Cerebras provider
+│   ├── deepinfra/         # DeepInfra provider
+│   └── huggingface/       # HuggingFace provider
+├── scripts/
+│   └── test-live.sh       # Run live tests with .env
+├── tests/
+│   └── integration/       # Live provider integration tests
+└── examples/
+    └── simple.zig         # Example usage
 ```
-
-## Requirements
-
-- Zig 0.15.0 or later
 
 ## Testing
 
-The SDK includes comprehensive unit tests for all providers:
+The SDK includes comprehensive unit tests (825+ passing):
 
 ```bash
-# Run all tests
 zig build test
 ```
 
@@ -317,17 +281,36 @@ const req = mock.lastRequest().?;
 try std.testing.expectEqualStrings("POST", req.method.toString());
 ```
 
-## Recent Changes
+## Roadmap
 
-### v0.2.0 (Current Fork)
+### Working (with live integration tests)
+- `generateText` / `streamText` - text generation and streaming
+- `generateObject` / `streamObject` - structured JSON output with schema validation
+- Tool execution with agentic loop (multi-step)
+- 5 providers tested: OpenAI, Anthropic, Google, Azure, xAI
 
-- **HTTP Client Interface**: Standardized `HttpClient` type across all providers with vtable-based polymorphism
-- **MockHttpClient**: Added mock HTTP client for testing without network calls
-- **Memory Safety**: Improved allocator passing to `getHeaders()` functions
-- **Google/Vertex HTTP**: Implemented full HTTP layer for Google and Vertex providers (language, embedding, image models)
-- **Response Types**: Added proper response parsing types for Google and Vertex APIs
-- **Anthropic API**: Updated to API version `2024-06-01`
-- **Compliance Tests**: Added comprehensive tests for OpenAI, Anthropic, Azure, Google, and Vertex providers
+### Working (unit tests only)
+- `embed` / `embedMany` - text embedding generation
+- Middleware chain (rate limiting)
+- `RetryPolicy`, `RequestContext`
+- `generateImage`, `generateSpeech`, `transcribe` - API surface exists, no provider implementations yet
+
+### Known Issues
+- **Streaming memory**: Provider `doStream` implementations allocate internally without proper cleanup; streaming tests use `ArenaAllocator` as a workaround
+- **API response coverage**: Some provider response structs don't cover all fields returned by live APIs; `ignore_unknown_fields` is used as a temporary workaround until structs are updated to match full API schemas
+
+### Planned
+- Complete API response struct coverage for all providers
+- Fix streaming memory management
+- Re-enable removed providers (Mistral, Groq, DeepSeek, Cohere, Bedrock, etc.)
+- Image generation providers (Fal, FLUX, DALL-E)
+- Speech/audio providers (ElevenLabs, Deepgram, etc.)
+- Additional middleware (logging, caching, token counting)
+- Multi-modal prompt support (images in prompts)
+
+## Requirements
+
+- Zig 0.15.0 or later
 
 ## Contributing
 
