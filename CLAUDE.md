@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zig AI SDK - A comprehensive AI SDK for Zig, ported from the Vercel AI SDK. Provides unified interfaces for 30+ AI providers including OpenAI, Anthropic, Google, Azure, AWS Bedrock, Mistral, and more. Supports text generation, streaming, tool calling, embeddings, image generation, speech synthesis, and transcription.
+Zig AI SDK - A comprehensive AI SDK for Zig, ported from the Vercel AI SDK. Provides unified interfaces for 14 AI provider packages including OpenAI, Anthropic, Google, Azure, xAI, and more. Supports text generation, streaming, tool calling, structured object generation, and embeddings.
 
 **Requirements**: Zig 0.15.0 or later
 
@@ -18,6 +18,24 @@ zig build run-example  # Run the example application
 ```
 
 There is no way to run individual test files - all tests are compiled and run together via `build.zig`.
+
+### Live Integration Tests
+
+Live tests require API keys in a `.env` file. Use the helper script:
+
+```bash
+cp .env.example .env       # Fill in your API keys
+./scripts/test-live.sh     # Loads .env and runs zig build test-live
+```
+
+Required env vars per provider:
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GOOGLE_GENERATIVE_AI_API_KEY`
+- `XAI_API_KEY`
+- `AZURE_API_KEY`, `AZURE_RESOURCE_NAME`, `AZURE_DEPLOYMENT_NAME`
+
+Tests skip automatically when a provider's key is not set. The test file is at `tests/integration/live_provider_test.zig`.
 
 ## GitHub Workflow
 
@@ -66,7 +84,11 @@ packages/
 
 - `packages/provider/src/`: `JsonValue` (custom JSON type), error hierarchy, model interfaces
 - `packages/provider-utils/src/http/`: HTTP client abstraction and standard library implementation
-- `packages/ai/src/generate-text/`: Main text generation with streaming and tool support
+- `packages/ai/src/generate-text/`: Text generation with streaming and tool support
+- `packages/ai/src/generate-object/`: Structured object generation with JSON schema validation
+- `packages/ai/src/embed/`: Text embedding generation with similarity functions
+- `packages/ai/src/tool/`: Tool/function calling with agentic loop support
+- `packages/ai/src/middleware/`: Request/response middleware chain (rate limiting, etc.)
 
 ## Adding a New Provider
 
