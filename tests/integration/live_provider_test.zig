@@ -81,7 +81,7 @@ const StreamTestCtx = struct {
 // ============================================================================
 
 test "live: OpenAI generateText" {
-    const api_key = getEnv("OPENAI_API_KEY") orelse return;
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
     const allocator = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
@@ -109,7 +109,7 @@ test "live: OpenAI generateText" {
 
 test "live: OpenAI error diagnostic on invalid key" {
     const allocator = testing.allocator;
-    _ = getEnv("OPENAI_API_KEY") orelse return;
+    _ = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
     defer http_client.deinit();
@@ -137,7 +137,7 @@ test "live: OpenAI error diagnostic on invalid key" {
 }
 
 test "live: OpenAI streamText" {
-    const api_key = getEnv("OPENAI_API_KEY") orelse return;
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
@@ -176,9 +176,9 @@ test "live: OpenAI streamText" {
 // ============================================================================
 
 test "live: Azure generateText" {
-    const api_key = getEnv("AZURE_API_KEY") orelse return;
-    const resource_name = getEnv("AZURE_RESOURCE_NAME") orelse return;
-    const deployment_name = getEnv("AZURE_DEPLOYMENT_NAME") orelse return;
+    const api_key = getEnv("AZURE_API_KEY") orelse return error.SkipZigTest;
+    const resource_name = getEnv("AZURE_RESOURCE_NAME") orelse return error.SkipZigTest;
+    const deployment_name = getEnv("AZURE_DEPLOYMENT_NAME") orelse return error.SkipZigTest;
     const allocator = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
@@ -207,9 +207,9 @@ test "live: Azure generateText" {
 
 test "live: Azure error diagnostic on invalid key" {
     const allocator = testing.allocator;
-    _ = getEnv("AZURE_API_KEY") orelse return;
-    const resource_name = getEnv("AZURE_RESOURCE_NAME") orelse return;
-    const deployment_name = getEnv("AZURE_DEPLOYMENT_NAME") orelse return;
+    _ = getEnv("AZURE_API_KEY") orelse return error.SkipZigTest;
+    const resource_name = getEnv("AZURE_RESOURCE_NAME") orelse return error.SkipZigTest;
+    const deployment_name = getEnv("AZURE_DEPLOYMENT_NAME") orelse return error.SkipZigTest;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
     defer http_client.deinit();
@@ -238,9 +238,9 @@ test "live: Azure error diagnostic on invalid key" {
 }
 
 test "live: Azure streamText" {
-    const api_key = getEnv("AZURE_API_KEY") orelse return;
-    const resource_name = getEnv("AZURE_RESOURCE_NAME") orelse return;
-    const deployment_name = getEnv("AZURE_DEPLOYMENT_NAME") orelse return;
+    const api_key = getEnv("AZURE_API_KEY") orelse return error.SkipZigTest;
+    const resource_name = getEnv("AZURE_RESOURCE_NAME") orelse return error.SkipZigTest;
+    const deployment_name = getEnv("AZURE_DEPLOYMENT_NAME") orelse return error.SkipZigTest;
 
     const alloc = testing.allocator;
 
@@ -281,7 +281,7 @@ test "live: Azure streamText" {
 // ============================================================================
 
 test "live: Anthropic generateText" {
-    const api_key = getEnv("ANTHROPIC_API_KEY") orelse return;
+    const api_key = getEnv("ANTHROPIC_API_KEY") orelse return error.SkipZigTest;
     const allocator = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
@@ -309,7 +309,7 @@ test "live: Anthropic generateText" {
 
 test "live: Anthropic error diagnostic on invalid key" {
     const allocator = testing.allocator;
-    _ = getEnv("ANTHROPIC_API_KEY") orelse return;
+    _ = getEnv("ANTHROPIC_API_KEY") orelse return error.SkipZigTest;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
     defer http_client.deinit();
@@ -337,7 +337,7 @@ test "live: Anthropic error diagnostic on invalid key" {
 }
 
 test "live: Anthropic streamText" {
-    const api_key = getEnv("ANTHROPIC_API_KEY") orelse return;
+    const api_key = getEnv("ANTHROPIC_API_KEY") orelse return error.SkipZigTest;
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
@@ -376,7 +376,7 @@ test "live: Anthropic streamText" {
 // ============================================================================
 
 test "live: Google generateText" {
-    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return;
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
     const allocator = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
@@ -404,7 +404,7 @@ test "live: Google generateText" {
 
 test "live: Google error diagnostic on invalid key" {
     const allocator = testing.allocator;
-    _ = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return;
+    _ = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
     defer http_client.deinit();
@@ -432,7 +432,7 @@ test "live: Google error diagnostic on invalid key" {
 }
 
 test "live: Google streamText" {
-    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return;
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
@@ -471,7 +471,7 @@ test "live: Google streamText" {
 // ============================================================================
 
 test "live: xAI generateText" {
-    const api_key = getEnv("XAI_API_KEY") orelse return;
+    const api_key = getEnv("XAI_API_KEY") orelse return error.SkipZigTest;
     const allocator = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
@@ -499,7 +499,7 @@ test "live: xAI generateText" {
 
 test "live: xAI error diagnostic on invalid key" {
     const allocator = testing.allocator;
-    _ = getEnv("XAI_API_KEY") orelse return;
+    _ = getEnv("XAI_API_KEY") orelse return error.SkipZigTest;
 
     var http_client = provider_utils.createStdHttpClient(allocator);
     defer http_client.deinit();
@@ -528,7 +528,7 @@ test "live: xAI error diagnostic on invalid key" {
 }
 
 test "live: xAI streamText" {
-    const api_key = getEnv("XAI_API_KEY") orelse return;
+    const api_key = getEnv("XAI_API_KEY") orelse return error.SkipZigTest;
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);

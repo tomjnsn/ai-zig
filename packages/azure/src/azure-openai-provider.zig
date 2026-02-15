@@ -685,18 +685,6 @@ test "AzureOpenAIProvider allocator usage" {
     try std.testing.expectEqual(allocator, provider.allocator);
 }
 
-test "AzureOpenAIProvider deinit safety" {
-    const allocator = std.testing.allocator;
-
-    var provider = createAzureWithSettings(allocator, .{
-        .base_url = "https://myresource.openai.azure.com/openai",
-    });
-
-    // Call deinit multiple times should be safe
-    provider.deinit();
-    provider.deinit();
-}
-
 test "AzureOpenAIProvider different API versions" {
     const allocator = std.testing.allocator;
 

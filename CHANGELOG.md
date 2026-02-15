@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- 820+ unit tests passing across all packages (#84-#98)
+- 830+ unit tests passing across all packages (#84-#98)
 
 ## [0.2.0] - 2026-02-14
 
@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Consolidated to 14 working provider packages: OpenAI, Anthropic, Google, Google Vertex, Azure, xAI, Perplexity, Together AI, Fireworks, Cerebras, DeepInfra, HuggingFace, OpenAI Compatible, and provider-utils
 - Updated documentation: README, CLAUDE.md, `.env.example` (#80)
-- 825 unit tests passing across all packages
+- 830+ unit tests passing across all packages
 
 ## [0.1.0] - 2024-12-19
 

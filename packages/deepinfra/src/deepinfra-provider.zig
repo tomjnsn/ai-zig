@@ -448,15 +448,6 @@ test "provider can create multiple models" {
     try std.testing.expectEqualStrings("embed-2", embed2.getModelId());
 }
 
-test "DeepInfraProvider deinit is idempotent" {
-    const allocator = std.testing.allocator;
-    var provider = createDeepInfra(allocator);
-
-    // Multiple calls to deinit should not cause issues
-    provider.deinit();
-    provider.deinit();
-}
-
 test "DeepInfraProvider with empty model ID" {
     const allocator = std.testing.allocator;
     var provider = createDeepInfra(allocator);

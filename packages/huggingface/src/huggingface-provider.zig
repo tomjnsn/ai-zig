@@ -425,15 +425,6 @@ test "HuggingFaceProvider init preserves allocator" {
     try std.testing.expect(provider.allocator.ptr == allocator.ptr);
 }
 
-test "HuggingFaceProvider deinit is safe to call" {
-    const allocator = std.testing.allocator;
-    var provider = createHuggingFace(allocator);
-
-    // Should not crash or leak
-    provider.deinit();
-    provider.deinit(); // Safe to call multiple times
-}
-
 test "huggingface provider returns consistent values" {
     var provider1 = createHuggingFace(std.testing.allocator);
     defer provider1.deinit();

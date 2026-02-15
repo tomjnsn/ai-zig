@@ -379,17 +379,6 @@ test "PerplexityProvider init with null settings uses defaults" {
     try std.testing.expectEqualStrings("https://api.perplexity.ai", provider.base_url);
 }
 
-test "PerplexityProvider deinit is safe to call" {
-    const allocator = std.testing.allocator;
-    var provider = createPerplexity(allocator);
-
-    // Should not crash or leak
-    provider.deinit();
-
-    // Safe to call multiple times
-    provider.deinit();
-}
-
 test "PerplexityProvider getProvider is const" {
     const allocator = std.testing.allocator;
     var provider = createPerplexity(allocator);

@@ -247,7 +247,7 @@ ai-zig/
 
 ## Testing
 
-The SDK includes comprehensive unit tests (820+ passing, including ~33 compilation-verification tests via `refAllDecls`):
+The SDK includes comprehensive unit tests (830+ passing, including ~33 compilation-verification tests via `refAllDecls`):
 
 ```bash
 zig build test
