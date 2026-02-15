@@ -348,6 +348,7 @@ test "StreamCallbacks emit fail complete" {
         error_seen: *?anyerror,
         complete_seen: *bool,
         alloc: std.mem.Allocator,
+        oom_error: bool = false,
     };
 
     var ctx = TestContext{
@@ -361,7 +362,10 @@ test "StreamCallbacks emit fail complete" {
         .on_item = struct {
             fn handler(context: ?*anyopaque, item: i32) void {
                 const c: *TestContext = @ptrCast(@alignCast(context));
-                c.items.append(c.alloc, item) catch @panic("OOM in test");
+                c.items.append(c.alloc, item) catch {
+                    c.oom_error = true;
+                    return;
+                };
             }
         }.handler,
         .on_error = struct {
@@ -383,6 +387,7 @@ test "StreamCallbacks emit fail complete" {
     callbacks.emit(20);
     callbacks.emit(30);
 
+    try std.testing.expect(!ctx.oom_error);
     try std.testing.expectEqual(@as(usize, 3), items.items.len);
     try std.testing.expectEqual(@as(i32, 10), items.items[0]);
     try std.testing.expectEqual(@as(i32, 20), items.items[1]);

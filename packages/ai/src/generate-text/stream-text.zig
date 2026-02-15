@@ -534,13 +534,17 @@ test "streamText delivers chunks from mock provider" {
     const TestCtx = struct {
         alloc: std.mem.Allocator,
         text_buf: std.ArrayList(u8),
+        oom_error: bool = false,
 
         fn onPart(part: StreamPart, ctx_raw: ?*anyopaque) void {
             if (ctx_raw) |p| {
                 const self: *@This() = @ptrCast(@alignCast(p));
                 switch (part) {
                     .text_delta => |d| {
-                        self.text_buf.appendSlice(self.alloc, d.text) catch @panic("OOM in test");
+                        self.text_buf.appendSlice(self.alloc, d.text) catch {
+                            self.oom_error = true;
+                            return;
+                        };
                     },
                     else => {},
                 }
@@ -571,6 +575,7 @@ test "streamText delivers chunks from mock provider" {
     }
 
     // The streaming should have delivered "Hello World" via the model's doStream
+    try std.testing.expect(!test_ctx.oom_error);
     try std.testing.expectEqualStrings("Hello World", result.getText());
 }
 
