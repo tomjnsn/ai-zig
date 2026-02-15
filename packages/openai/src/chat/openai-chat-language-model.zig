@@ -704,7 +704,10 @@ const StreamState = struct {
                         });
 
                         // Emit tool call
-                        const args_copy = self.result_allocator.dupe(u8, tool_call.arguments.items) catch return;
+                        const args_copy = self.result_allocator.dupe(u8, tool_call.arguments.items) catch |err| {
+                            self.callbacks.on_error(self.callbacks.ctx, err);
+                            return;
+                        };
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_call = .{
                                 .tool_call_id = tool_call.id,

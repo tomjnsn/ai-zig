@@ -308,7 +308,10 @@ pub const GoogleGenerativeAILanguageModel = struct {
 
         fn processChunk(self: *StreamState, chunk: []const u8) void {
             // Append chunk to partial line buffer
-            self.partial_line.appendSlice(self.request_allocator, chunk) catch return;
+            self.partial_line.appendSlice(self.request_allocator, chunk) catch |err| {
+                self.callbacks.on_error(self.callbacks.ctx, err);
+                return;
+            };
 
             // Process complete lines
             while (std.mem.indexOf(u8, self.partial_line.items, "\n")) |newline_pos| {
@@ -340,7 +343,10 @@ pub const GoogleGenerativeAILanguageModel = struct {
                     self.request_allocator,
                     json_data,
                     .{ .ignore_unknown_fields = true },
-                ) catch return;
+                ) catch |err| {
+                    self.callbacks.on_error(self.callbacks.ctx, err);
+                    return;
+                };
                 defer parsed.deinit();
                 const response = parsed.value;
 
