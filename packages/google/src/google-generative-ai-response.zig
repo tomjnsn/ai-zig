@@ -14,6 +14,9 @@ pub const GoogleGenerateContentResponse = struct {
         citationMetadata: ?CitationMetadata = null,
         index: ?u32 = null,
         groundingMetadata: ?GroundingMetadata = null,
+        avgLogprobs: ?f64 = null,
+        logprobsResult: ?LogprobsResult = null,
+        tokenCount: ?u32 = null,
     };
 
     pub const Content = struct {
@@ -99,6 +102,7 @@ pub const GoogleGenerateContentResponse = struct {
     pub const RetrievedContext = struct {
         uri: ?[]const u8 = null,
         title: ?[]const u8 = null,
+        text: ?[]const u8 = null,
     };
 
     pub const GroundingSupport = struct {
@@ -118,12 +122,28 @@ pub const GoogleGenerateContentResponse = struct {
         googleSearchDynamicRetrievalScore: ?f64 = null,
     };
 
+    pub const LogprobsResult = struct {
+        topCandidates: ?[]TopCandidates = null,
+        chosenCandidates: ?[]LogprobsCandidate = null,
+    };
+
+    pub const TopCandidates = struct {
+        candidates: ?[]LogprobsCandidate = null,
+    };
+
+    pub const LogprobsCandidate = struct {
+        token: ?[]const u8 = null,
+        tokenId: ?u32 = null,
+        logProbability: ?f64 = null,
+    };
+
     pub const UsageMetadata = struct {
         promptTokenCount: ?u32 = null,
         candidatesTokenCount: ?u32 = null,
         totalTokenCount: ?u32 = null,
         cachedContentTokenCount: ?u32 = null,
         thoughtsTokenCount: ?u32 = null,
+        toolUsePromptTokenCount: ?u32 = null,
     };
 
     pub const PromptFeedback = struct {

@@ -10,6 +10,7 @@ pub const OpenAIChatResponse = struct {
     choices: []const Choice,
     usage: ?Usage = null,
     system_fingerprint: ?[]const u8 = null,
+    service_tier: ?[]const u8 = null,
 
     pub const Choice = struct {
         index: u32,
@@ -21,6 +22,7 @@ pub const OpenAIChatResponse = struct {
     pub const Message = struct {
         role: []const u8,
         content: ?[]const u8 = null,
+        refusal: ?[]const u8 = null,
         tool_calls: ?[]const ToolCall = null,
         annotations: ?[]const Annotation = null,
     };
@@ -90,6 +92,7 @@ pub const OpenAIChatChunk = struct {
     choices: []const ChunkChoice = &[_]ChunkChoice{},
     usage: ?OpenAIChatResponse.Usage = null,
     system_fingerprint: ?[]const u8 = null,
+    service_tier: ?[]const u8 = null,
 
     /// Error field for error chunks
     @"error": ?ChunkError = null,
@@ -110,6 +113,7 @@ pub const OpenAIChatChunk = struct {
     pub const Delta = struct {
         role: ?[]const u8 = null,
         content: ?[]const u8 = null,
+        refusal: ?[]const u8 = null,
         tool_calls: ?[]const DeltaToolCall = null,
         annotations: ?[]const OpenAIChatResponse.Annotation = null,
     };
