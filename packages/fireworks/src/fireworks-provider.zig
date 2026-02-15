@@ -501,10 +501,10 @@ test "FireworksProvider deinit is idempotent" {
     const allocator = std.testing.allocator;
     var provider = createFireworks(allocator);
 
+    try std.testing.expectEqualStrings("fireworks", provider.getProvider());
+
     provider.deinit();
     provider.deinit(); // Should not crash
-
-    try std.testing.expect(true); // Test passes if we get here
 }
 
 test "FireworksProvider with very long model ID" {
@@ -543,9 +543,9 @@ test "fireworks providers have consistent values" {
 // ============================================================================
 
 test "getApiKeyFromEnv returns optional" {
-    // This test verifies the function can be called without error
     // The actual return value depends on environment variables
     const result = getApiKeyFromEnv();
-    _ = result; // May be null or a string, both are valid
-    try std.testing.expect(true);
+    if (result) |key| {
+        try std.testing.expect(key.len > 0);
+    }
 }
