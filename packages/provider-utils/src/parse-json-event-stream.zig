@@ -183,16 +183,22 @@ test "EventSourceParser basic" {
         for (events.items) |e| allocator.free(e);
         events.deinit(allocator);
     }
+    var error_count: usize = 0;
 
     const TestContext = struct {
         events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
+        error_count: *usize,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
-            const data = self.allocator.dupe(u8, event.data) catch return;
+            const data = self.allocator.dupe(u8, event.data) catch {
+                self.error_count.* += 1;
+                return;
+            };
             self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
+                self.error_count.* += 1;
             };
         }
     };
@@ -200,10 +206,12 @@ test "EventSourceParser basic" {
     var test_ctx = TestContext{
         .events = &events,
         .allocator = allocator,
+        .error_count = &error_count,
     };
 
     try parser.feed("data: {\"text\": \"hello\"}\n\n", TestContext.handler, &test_ctx);
 
+    try std.testing.expectEqual(@as(usize, 0), error_count);
     try std.testing.expectEqual(@as(usize, 1), events.items.len);
     try std.testing.expectEqualStrings("{\"text\": \"hello\"}", events.items[0]);
 }
@@ -238,15 +246,22 @@ test "EventSourceParser multiple events" {
         events.deinit(allocator);
     }
 
+    var error_count: usize = 0;
+
     const TestContext = struct {
         events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
+        error_count: *usize,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
-            const data = self.allocator.dupe(u8, event.data) catch return;
+            const data = self.allocator.dupe(u8, event.data) catch {
+                self.error_count.* += 1;
+                return;
+            };
             self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
+                self.error_count.* += 1;
             };
         }
     };
@@ -254,6 +269,7 @@ test "EventSourceParser multiple events" {
     var test_ctx = TestContext{
         .events = &events,
         .allocator = allocator,
+        .error_count = &error_count,
     };
 
     const stream_data =
@@ -268,6 +284,7 @@ test "EventSourceParser multiple events" {
 
     try parser.feed(stream_data, TestContext.handler, &test_ctx);
 
+    try std.testing.expectEqual(@as(usize, 0), error_count);
     try std.testing.expectEqual(@as(usize, 3), events.items.len);
     try std.testing.expectEqualStrings("{\"id\":1}", events.items[0]);
     try std.testing.expectEqualStrings("{\"id\":2}", events.items[1]);
@@ -286,15 +303,22 @@ test "EventSourceParser multiline data" {
         events.deinit(allocator);
     }
 
+    var error_count: usize = 0;
+
     const TestContext = struct {
         events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
+        error_count: *usize,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
-            const data = self.allocator.dupe(u8, event.data) catch return;
+            const data = self.allocator.dupe(u8, event.data) catch {
+                self.error_count.* += 1;
+                return;
+            };
             self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
+                self.error_count.* += 1;
             };
         }
     };
@@ -302,6 +326,7 @@ test "EventSourceParser multiline data" {
     var test_ctx = TestContext{
         .events = &events,
         .allocator = allocator,
+        .error_count = &error_count,
     };
 
     const stream_data =
@@ -314,6 +339,7 @@ test "EventSourceParser multiline data" {
 
     try parser.feed(stream_data, TestContext.handler, &test_ctx);
 
+    try std.testing.expectEqual(@as(usize, 0), error_count);
     try std.testing.expectEqual(@as(usize, 1), events.items.len);
     try std.testing.expectEqualStrings("line 1\nline 2\nline 3", events.items[0]);
 }
@@ -330,16 +356,23 @@ test "EventSourceParser with event types" {
         event_types.deinit(allocator);
     }
 
+    var error_count: usize = 0;
+
     const TestContext = struct {
         event_types: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
+        error_count: *usize,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             if (event.event_type) |et| {
-                const event_type = self.allocator.dupe(u8, et) catch return;
+                const event_type = self.allocator.dupe(u8, et) catch {
+                    self.error_count.* += 1;
+                    return;
+                };
                 self.event_types.append(self.allocator, event_type) catch {
                     self.allocator.free(event_type);
+                    self.error_count.* += 1;
                 };
             }
         }
@@ -348,6 +381,7 @@ test "EventSourceParser with event types" {
     var test_ctx = TestContext{
         .event_types = &event_types,
         .allocator = allocator,
+        .error_count = &error_count,
     };
 
     const stream_data =
@@ -362,6 +396,7 @@ test "EventSourceParser with event types" {
 
     try parser.feed(stream_data, TestContext.handler, &test_ctx);
 
+    try std.testing.expectEqual(@as(usize, 0), error_count);
     try std.testing.expectEqual(@as(usize, 2), event_types.items.len);
     try std.testing.expectEqualStrings("message", event_types.items[0]);
     try std.testing.expectEqualStrings("error", event_types.items[1]);
@@ -405,15 +440,22 @@ test "EventSourceParser different line endings" {
         events.deinit(allocator);
     }
 
+    var error_count: usize = 0;
+
     const TestContext = struct {
         events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
+        error_count: *usize,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
-            const data = self.allocator.dupe(u8, event.data) catch return;
+            const data = self.allocator.dupe(u8, event.data) catch {
+                self.error_count.* += 1;
+                return;
+            };
             self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
+                self.error_count.* += 1;
             };
         }
     };
@@ -421,6 +463,7 @@ test "EventSourceParser different line endings" {
     var test_ctx = TestContext{
         .events = &events,
         .allocator = allocator,
+        .error_count = &error_count,
     };
 
     // Test \r\n (Windows)
@@ -429,6 +472,7 @@ test "EventSourceParser different line endings" {
     // Test \n (Unix)
     try parser.feed("data: test2\n\n", TestContext.handler, &test_ctx);
 
+    try std.testing.expectEqual(@as(usize, 0), error_count);
     try std.testing.expectEqual(@as(usize, 2), events.items.len);
 }
 
@@ -444,15 +488,22 @@ test "EventSourceParser chunked input" {
         events.deinit(allocator);
     }
 
+    var error_count: usize = 0;
+
     const TestContext = struct {
         events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
+        error_count: *usize,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
-            const data = self.allocator.dupe(u8, event.data) catch return;
+            const data = self.allocator.dupe(u8, event.data) catch {
+                self.error_count.* += 1;
+                return;
+            };
             self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
+                self.error_count.* += 1;
             };
         }
     };
@@ -460,6 +511,7 @@ test "EventSourceParser chunked input" {
     var test_ctx = TestContext{
         .events = &events,
         .allocator = allocator,
+        .error_count = &error_count,
     };
 
     // Feed data in small chunks
@@ -469,6 +521,7 @@ test "EventSourceParser chunked input" {
     try parser.feed("\n", TestContext.handler, &test_ctx);
     try parser.feed("\n", TestContext.handler, &test_ctx);
 
+    try std.testing.expectEqual(@as(usize, 0), error_count);
     try std.testing.expectEqual(@as(usize, 1), events.items.len);
     try std.testing.expectEqualStrings("hello world", events.items[0]);
 }
@@ -515,15 +568,22 @@ test "EventSourceParser empty data field" {
         events.deinit(allocator);
     }
 
+    var error_count: usize = 0;
+
     const TestContext = struct {
         events: *std.ArrayList([]const u8),
         allocator: std.mem.Allocator,
+        error_count: *usize,
 
         fn handler(ctx: ?*anyopaque, event: EventSourceParser.Event) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
-            const data = self.allocator.dupe(u8, event.data) catch return;
+            const data = self.allocator.dupe(u8, event.data) catch {
+                self.error_count.* += 1;
+                return;
+            };
             self.events.append(self.allocator, data) catch {
                 self.allocator.free(data);
+                self.error_count.* += 1;
             };
         }
     };
@@ -531,10 +591,12 @@ test "EventSourceParser empty data field" {
     var test_ctx = TestContext{
         .events = &events,
         .allocator = allocator,
+        .error_count = &error_count,
     };
 
     try parser.feed("data:\n\n", TestContext.handler, &test_ctx);
 
+    try std.testing.expectEqual(@as(usize, 0), error_count);
     try std.testing.expectEqual(@as(usize, 1), events.items.len);
     try std.testing.expectEqualStrings("", events.items[0]);
 }
