@@ -79,11 +79,6 @@ pub const ParseError = parse_json.ParseError;
 pub const TypedParseResult = parse_json.TypedParseResult;
 
 pub const EventSourceParser = parse_json_event_stream.EventSourceParser;
-pub const parseJsonEventStream = parse_json_event_stream.parseJsonEventStream;
-pub const JsonEventStreamParser = parse_json_event_stream.JsonEventStreamParser;
-pub const ParseEventResult = parse_json_event_stream.ParseEventResult;
-pub const JsonEventStreamCallbacks = parse_json_event_stream.JsonEventStreamCallbacks;
-pub const SimpleJsonEventStreamParser = parse_json_event_stream.SimpleJsonEventStreamParser;
 
 // ID generation
 pub const generate_id = @import("generate-id.zig");
