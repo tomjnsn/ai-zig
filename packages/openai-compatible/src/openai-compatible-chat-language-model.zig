@@ -287,9 +287,15 @@ pub const OpenAICompatibleChatLanguageModel = struct {
         result_allocator: std.mem.Allocator,
         callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) !void {
+        // Arena 1: request setup (headers, URL, body) — freed after HTTP completes
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
         const request_allocator = arena.allocator();
+
+        // Arena 2: stream state (tool_calls ArrayList, arguments, parsing buffers)
+        var stream_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer stream_arena.deinit();
+        const stream_allocator = stream_arena.allocator();
 
         // Build request body with stream=true
         var request_body = try self.buildRequestBody(request_allocator, call_options);
@@ -321,10 +327,12 @@ pub const OpenAICompatibleChatLanguageModel = struct {
         // Serialize request body
         const body = try serializeJsonValue(request_allocator, request_body);
 
-        // Stream state
+        // Stream state — uses stream_allocator for intermediate data,
+        // result_allocator only for data the caller keeps (duped tool IDs/names)
         var stream_state = StreamState{
             .callbacks = callbacks,
             .result_allocator = result_allocator,
+            .stream_allocator = stream_allocator,
             .tool_calls = .{},
             .is_text_active = false,
             .finish_reason = .unknown,
@@ -578,6 +586,7 @@ const ToolCallState = struct {
 const StreamState = struct {
     callbacks: lm.LanguageModelV3.StreamCallbacks,
     result_allocator: std.mem.Allocator,
+    stream_allocator: std.mem.Allocator,
     tool_calls: std.ArrayListUnmanaged(ToolCallState),
     is_text_active: bool,
     finish_reason: lm.LanguageModelV3FinishReason,
@@ -590,7 +599,7 @@ const StreamState = struct {
                 const json_data = line[6..];
                 if (std.mem.eql(u8, json_data, "[DONE]")) continue;
 
-                const parsed = std.json.parseFromSlice(ChatCompletionChunk, self.result_allocator, json_data, .{
+                const parsed = std.json.parseFromSlice(ChatCompletionChunk, self.stream_allocator, json_data, .{
                     .ignore_unknown_fields = true,
                 }) catch {
                     continue;
@@ -640,9 +649,9 @@ const StreamState = struct {
     fn processToolCallDelta(self: *StreamState, tc: ChatCompletionChunk.DeltaToolCall) !void {
         const index = tc.index;
 
-        // Ensure we have enough tool call slots
+        // Ensure we have enough tool call slots (ArrayList uses stream_allocator)
         while (self.tool_calls.items.len <= index) {
-            try self.tool_calls.append(self.result_allocator, .{
+            try self.tool_calls.append(self.stream_allocator, .{
                 .id = "",
                 .name = "",
                 .arguments = .{},
@@ -653,12 +662,12 @@ const StreamState = struct {
         var tool_call = &self.tool_calls.items[index];
 
         if (tc.id) |id| {
-            tool_call.id = try self.result_allocator.dupe(u8, id);
+            tool_call.id = try self.stream_allocator.dupe(u8, id);
         }
 
         if (tc.function) |func| {
             if (func.name) |name| {
-                tool_call.name = try self.result_allocator.dupe(u8, name);
+                tool_call.name = try self.stream_allocator.dupe(u8, name);
                 self.callbacks.on_part(self.callbacks.ctx, .{
                     .tool_input_start = .{
                         .id = tool_call.id,
@@ -668,7 +677,7 @@ const StreamState = struct {
             }
 
             if (func.arguments) |args| {
-                try tool_call.arguments.appendSlice(self.result_allocator, args);
+                try tool_call.arguments.appendSlice(self.stream_allocator, args);
                 self.callbacks.on_part(self.callbacks.ctx, .{
                     .tool_input_delta = .{
                         .id = tool_call.id,
@@ -677,7 +686,7 @@ const StreamState = struct {
                 });
 
                 if (!tool_call.has_finished) {
-                    if (isValidJson(self.result_allocator, tool_call.arguments.items)) {
+                    if (isValidJson(self.stream_allocator, tool_call.arguments.items)) {
                         tool_call.has_finished = true;
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .tool_input_end = .{ .id = tool_call.id },

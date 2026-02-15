@@ -338,6 +338,11 @@ pub const AnthropicMessagesLanguageModel = struct {
         call_options: lm.LanguageModelV3CallOptions,
         callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) !void {
+        // Arena for stream state (content_blocks HashMap, JSON parsing buffers)
+        var stream_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer stream_arena.deinit();
+        const stream_allocator = stream_arena.allocator();
+
         var all_warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
         // Check for unsupported features (same as doGenerate)
@@ -416,11 +421,13 @@ pub const AnthropicMessagesLanguageModel = struct {
         // Serialize request body
         const body = try serializeRequest(request_allocator, request);
 
-        // Stream state
+        // Stream state — uses stream_allocator for intermediate data,
+        // result_allocator only for data the caller keeps (IDs, duped tool args)
         var stream_state = StreamState{
             .callbacks = callbacks,
             .result_allocator = result_allocator,
-            .content_blocks = std.AutoHashMap(u32, ContentBlockState).init(request_allocator),
+            .stream_allocator = stream_allocator,
+            .content_blocks = std.AutoHashMap(u32, ContentBlockState).init(stream_allocator),
             .finish_reason = .unknown,
         };
 
@@ -542,6 +549,7 @@ const ContentBlockState = struct {
 const StreamState = struct {
     callbacks: lm.LanguageModelV3.StreamCallbacks,
     result_allocator: std.mem.Allocator,
+    stream_allocator: std.mem.Allocator,
     content_blocks: std.AutoHashMap(u32, ContentBlockState),
     finish_reason: lm.LanguageModelV3FinishReason,
     usage: ?lm.LanguageModelV3Usage = null,
@@ -557,7 +565,7 @@ const StreamState = struct {
             } else if (std.mem.startsWith(u8, line, "data: ")) {
                 const json_data = line[6..];
 
-                const parsed = std.json.parseFromSlice(api.AnthropicMessagesChunk, self.result_allocator, json_data, .{ .ignore_unknown_fields = true }) catch |err| {
+                const parsed = std.json.parseFromSlice(api.AnthropicMessagesChunk, self.stream_allocator, json_data, .{ .ignore_unknown_fields = true }) catch |err| {
                     // Report JSON parse error to caller but continue processing subsequent chunks
                     self.callbacks.on_part(self.callbacks.ctx, .{
                         .@"error" = .{ .err = err, .message = "Failed to parse SSE chunk JSON" },
