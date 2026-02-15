@@ -247,7 +247,7 @@ ai-zig/
 
 ## Testing
 
-The SDK includes comprehensive unit tests (800+ passing, including ~33 compilation-verification tests via `refAllDecls`):
+The SDK includes comprehensive unit tests (820+ passing, including ~33 compilation-verification tests via `refAllDecls`):
 
 ```bash
 zig build test
@@ -296,12 +296,11 @@ try std.testing.expectEqualStrings("POST", req.method.toString());
 - `generateImage`, `generateSpeech`, `transcribe` - API surface exists, no provider implementations yet
 
 ### Known Issues
-- **Streaming memory**: Provider `doStream` implementations allocate internally without proper cleanup; streaming tests use `ArenaAllocator` as a workaround
-- **API response coverage**: Some provider response structs don't cover all fields returned by live APIs; `ignore_unknown_fields` is used as a temporary workaround until structs are updated to match full API schemas
+- **Live test coverage**: Live integration tests only cover basic `generateText`/`streamText` and error diagnostics; tool calling, `generateObject`, `streamObject`, and embeddings are not yet tested against real APIs
+- **`ignore_unknown_fields`**: Response structs cover common fields but not every API response field; `ignore_unknown_fields = true` is used for forward compatibility
 
 ### Planned
-- Complete API response struct coverage for all providers
-- Fix streaming memory management
+- Live integration tests for tool calling, structured output, and embeddings
 - Re-enable removed providers (Mistral, Groq, DeepSeek, Cohere, Bedrock, etc.)
 - Image generation providers (Fal, FLUX, DALL-E)
 - Speech/audio providers (ElevenLabs, Deepgram, etc.)

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-02-15
+
+### Fixed
+
+- **Streaming memory leak**: Added arena-per-stream architecture to OpenAI, Anthropic, OpenAI-compatible providers; fixed missing `defer arena.deinit()` in Google provider (#95, #96)
+- **Silent `catch return`**: Routed errors to callbacks instead of silently returning in test and production streaming code (#91, #92)
+- **Trivial test assertions**: Replaced `expect(true)` with meaningful assertions in Fireworks provider (#83, #84)
+- **`@panic("OOM")` in tests**: Replaced panics with error flags in test helpers (#87, #88)
+
+### Added
+
+- **Behavioral tests for thin providers**: Added doGenerate, HTTP error, and transport error tests for Perplexity, TogetherAI, DeepInfra, Cerebras, HuggingFace (#93, #94)
+- **API response struct fields**: Added `service_tier`, `refusal` (OpenAI); `cache_creation`, `service_tier` (Anthropic); `avgLogprobs`, `logprobsResult`, `tokenCount` (Google) (#97, #98)
+
+### Removed
+
+- **Dead code**: Removed unused `JsonEventStreamParser(T)` and `SimpleJsonEventStreamParser` (#89, #90)
+
+### Changed
+
+- 820+ unit tests passing across all packages (#84-#98)
+
 ## [0.2.0] - 2026-02-14
 
 ### Added
@@ -37,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Consolidated to 14 working provider packages: OpenAI, Anthropic, Google, Google Vertex, Azure, xAI, Perplexity, Together AI, Fireworks, Cerebras, DeepInfra, HuggingFace, OpenAI Compatible, and provider-utils
 - Updated documentation: README, CLAUDE.md, `.env.example` (#80)
-- 825+ unit tests passing across all packages
+- 825 unit tests passing across all packages
 
 ## [0.1.0] - 2024-12-19
 
