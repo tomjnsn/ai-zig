@@ -138,6 +138,13 @@ pub const AnthropicMessagesResponse = struct {
         output_tokens: u64,
         cache_creation_input_tokens: ?u64 = null,
         cache_read_input_tokens: ?u64 = null,
+        cache_creation: ?CacheCreation = null,
+        service_tier: ?[]const u8 = null,
+    };
+
+    pub const CacheCreation = struct {
+        ephemeral_5m_input_tokens: ?u64 = null,
+        ephemeral_1h_input_tokens: ?u64 = null,
     };
 
     pub const Container = struct {
@@ -467,6 +474,7 @@ pub const AnthropicMessagesChunk = struct {
 
     pub const UsageDelta = struct {
         output_tokens: u64,
+        input_tokens: ?u64 = null,
     };
 
     pub const ErrorChunk = struct {
