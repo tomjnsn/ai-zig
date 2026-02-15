@@ -315,6 +315,11 @@ pub const OpenAIChatLanguageModel = struct {
         call_options: lm.LanguageModelV3CallOptions,
         callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) !void {
+        // Arena for stream state (tool_calls ArrayList, arguments, parsing buffers)
+        var stream_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer stream_arena.deinit();
+        const stream_allocator = stream_arena.allocator();
+
         var all_warnings = std.ArrayList(shared.SharedV3Warning).empty;
 
         // Check for unsupported features
@@ -402,10 +407,12 @@ pub const OpenAIChatLanguageModel = struct {
         // Serialize request body
         const body = try serializeRequest(request_allocator, request);
 
-        // Stream state
+        // Stream state — uses stream_allocator for intermediate data,
+        // result_allocator only for data the caller keeps (duped tool args, source IDs)
         var stream_state = StreamState{
             .callbacks = callbacks,
             .result_allocator = result_allocator,
+            .stream_allocator = stream_allocator,
             .tool_calls = std.ArrayList(ToolCallState).empty,
             .is_text_active = false,
             .finish_reason = .unknown,
@@ -551,6 +558,7 @@ const ToolCallState = struct {
 const StreamState = struct {
     callbacks: lm.LanguageModelV3.StreamCallbacks,
     result_allocator: std.mem.Allocator,
+    stream_allocator: std.mem.Allocator,
     tool_calls: std.ArrayList(ToolCallState),
     is_text_active: bool,
     finish_reason: lm.LanguageModelV3FinishReason,
@@ -566,7 +574,7 @@ const StreamState = struct {
                     continue;
                 }
 
-                const parsed = std.json.parseFromSlice(api.OpenAIChatChunk, self.result_allocator, json_data, .{
+                const parsed = std.json.parseFromSlice(api.OpenAIChatChunk, self.stream_allocator, json_data, .{
                     .ignore_unknown_fields = true,
                 }) catch |err| {
                     // Report JSON parse error to caller but continue processing subsequent chunks
@@ -652,9 +660,9 @@ const StreamState = struct {
     fn processToolCallDelta(self: *StreamState, tc: api.OpenAIChatChunk.DeltaToolCall) !void {
         const index = tc.index;
 
-        // Ensure we have enough tool call slots
+        // Ensure we have enough tool call slots (ArrayList uses stream_allocator)
         while (self.tool_calls.items.len <= index) {
-            try self.tool_calls.append(self.result_allocator, .{
+            try self.tool_calls.append(self.stream_allocator, .{
                 .id = "",
                 .name = "",
                 .arguments = std.ArrayList(u8).empty,
@@ -666,12 +674,12 @@ const StreamState = struct {
 
         // New tool call
         if (tc.id) |id| {
-            tool_call.id = try self.result_allocator.dupe(u8, id);
+            tool_call.id = try self.stream_allocator.dupe(u8, id);
         }
 
         if (tc.function) |func| {
             if (func.name) |name| {
-                tool_call.name = try self.result_allocator.dupe(u8, name);
+                tool_call.name = try self.stream_allocator.dupe(u8, name);
 
                 // Emit tool input start
                 self.callbacks.on_part(self.callbacks.ctx, .{
@@ -683,7 +691,7 @@ const StreamState = struct {
             }
 
             if (func.arguments) |args| {
-                try tool_call.arguments.appendSlice(self.result_allocator, args);
+                try tool_call.arguments.appendSlice(self.stream_allocator, args);
 
                 // Emit tool input delta
                 self.callbacks.on_part(self.callbacks.ctx, .{
@@ -695,7 +703,7 @@ const StreamState = struct {
 
                 // Check if complete (valid JSON)
                 if (!tool_call.has_finished) {
-                    if (isValidJson(self.result_allocator, tool_call.arguments.items)) {
+                    if (isValidJson(self.stream_allocator, tool_call.arguments.items)) {
                         tool_call.has_finished = true;
 
                         // Emit tool input end

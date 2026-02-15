@@ -138,11 +138,7 @@ test "live: OpenAI error diagnostic on invalid key" {
 
 test "live: OpenAI streamText" {
     const api_key = getEnv("OPENAI_API_KEY") orelse return;
-
-    // Arena for all streaming allocations (providers leak through HTTP client)
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
     var provider = openai.createOpenAIWithSettings(alloc, .{
@@ -154,6 +150,7 @@ test "live: OpenAI streamText" {
     var lm = model.asLanguageModel();
 
     var ctx = StreamTestCtx{ .alloc = alloc };
+    defer ctx.deinit();
 
     const stream_result = ai.streamText(alloc, .{
         .model = &lm,
@@ -163,6 +160,10 @@ test "live: OpenAI streamText" {
         std.debug.print("OpenAI streamText error: {}\n", .{err});
         return err;
     };
+    defer {
+        stream_result.deinit();
+        alloc.destroy(stream_result);
+    }
 
     try testing.expect(ctx.completed);
     try testing.expect(ctx.text_buf.items.len > 0);
@@ -241,9 +242,7 @@ test "live: Azure streamText" {
     const resource_name = getEnv("AZURE_RESOURCE_NAME") orelse return;
     const deployment_name = getEnv("AZURE_DEPLOYMENT_NAME") orelse return;
 
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
     var provider = azure.createAzureWithSettings(alloc, .{
@@ -256,6 +255,7 @@ test "live: Azure streamText" {
     var lm = model.asLanguageModel();
 
     var ctx = StreamTestCtx{ .alloc = alloc };
+    defer ctx.deinit();
 
     const stream_result = ai.streamText(alloc, .{
         .model = &lm,
@@ -265,6 +265,10 @@ test "live: Azure streamText" {
         std.debug.print("Azure streamText error: {}\n", .{err});
         return err;
     };
+    defer {
+        stream_result.deinit();
+        alloc.destroy(stream_result);
+    }
 
     try testing.expect(ctx.completed);
     try testing.expect(ctx.text_buf.items.len > 0);
@@ -334,10 +338,7 @@ test "live: Anthropic error diagnostic on invalid key" {
 
 test "live: Anthropic streamText" {
     const api_key = getEnv("ANTHROPIC_API_KEY") orelse return;
-
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
     var provider = anthropic.createAnthropicWithSettings(alloc, .{
@@ -349,6 +350,7 @@ test "live: Anthropic streamText" {
     var lm = model.asLanguageModel();
 
     var ctx = StreamTestCtx{ .alloc = alloc };
+    defer ctx.deinit();
 
     const stream_result = ai.streamText(alloc, .{
         .model = &lm,
@@ -358,6 +360,10 @@ test "live: Anthropic streamText" {
         std.debug.print("Anthropic streamText error: {}\n", .{err});
         return err;
     };
+    defer {
+        stream_result.deinit();
+        alloc.destroy(stream_result);
+    }
 
     try testing.expect(ctx.completed);
     try testing.expect(ctx.text_buf.items.len > 0);
@@ -427,10 +433,7 @@ test "live: Google error diagnostic on invalid key" {
 
 test "live: Google streamText" {
     const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return;
-
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
     var provider = google.createGoogleGenerativeAIWithSettings(alloc, .{
@@ -442,6 +445,7 @@ test "live: Google streamText" {
     var lm = model.asLanguageModel();
 
     var ctx = StreamTestCtx{ .alloc = alloc };
+    defer ctx.deinit();
 
     const stream_result = ai.streamText(alloc, .{
         .model = &lm,
@@ -451,6 +455,10 @@ test "live: Google streamText" {
         std.debug.print("Google streamText error: {}\n", .{err});
         return err;
     };
+    defer {
+        stream_result.deinit();
+        alloc.destroy(stream_result);
+    }
 
     try testing.expect(ctx.completed);
     try testing.expect(ctx.text_buf.items.len > 0);
@@ -521,10 +529,7 @@ test "live: xAI error diagnostic on invalid key" {
 
 test "live: xAI streamText" {
     const api_key = getEnv("XAI_API_KEY") orelse return;
-
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
     var provider = xai.createXaiWithSettings(alloc, .{
@@ -536,6 +541,7 @@ test "live: xAI streamText" {
     var lm = model.asLanguageModel();
 
     var ctx = StreamTestCtx{ .alloc = alloc };
+    defer ctx.deinit();
 
     const stream_result = ai.streamText(alloc, .{
         .model = &lm,
@@ -545,6 +551,10 @@ test "live: xAI streamText" {
         std.debug.print("xAI streamText error: {}\n", .{err});
         return err;
     };
+    defer {
+        stream_result.deinit();
+        alloc.destroy(stream_result);
+    }
 
     try testing.expect(ctx.completed);
     try testing.expect(ctx.text_buf.items.len > 0);

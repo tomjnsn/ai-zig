@@ -432,15 +432,14 @@ pub const GoogleGenerativeAILanguageModel = struct {
         result_allocator: std.mem.Allocator,
         callbacks: lm.LanguageModelV3.StreamCallbacks,
     ) void {
-        // Use arena for request processing
+        // Use arena for request processing (freed after streaming completes)
         var arena = std.heap.ArenaAllocator.init(self.allocator);
-        // Note: arena cleanup is deferred until stream completes
+        defer arena.deinit();
         const request_allocator = arena.allocator();
 
         // Build the request
         const request_body = self.buildRequestBody(request_allocator, call_options) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
-            arena.deinit();
             return;
         };
 
@@ -451,7 +450,6 @@ pub const GoogleGenerativeAILanguageModel = struct {
             .{ self.config.base_url, self.getModelPath() },
         ) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
-            arena.deinit();
             return;
         };
 
@@ -459,7 +457,6 @@ pub const GoogleGenerativeAILanguageModel = struct {
         var headers = if (self.config.headers_fn) |headers_fn|
             headers_fn(&self.config, request_allocator) catch |err| {
                 callbacks.on_error(callbacks.ctx, err);
-                arena.deinit();
                 return;
             }
         else
@@ -467,21 +464,18 @@ pub const GoogleGenerativeAILanguageModel = struct {
 
         headers.put("Content-Type", "application/json") catch |err| {
             callbacks.on_error(callbacks.ctx, err);
-            arena.deinit();
             return;
         };
 
         // Serialize request body
         const body_str = std.json.Stringify.valueAlloc(request_allocator, request_body, .{}) catch |err| {
             callbacks.on_error(callbacks.ctx, err);
-            arena.deinit();
             return;
         };
 
         // Get HTTP client
         const http_client = self.config.http_client orelse {
             callbacks.on_error(callbacks.ctx, error.NoHttpClient);
-            arena.deinit();
             return;
         };
 
@@ -494,7 +488,6 @@ pub const GoogleGenerativeAILanguageModel = struct {
                 .value = entry.value_ptr.*,
             }) catch |err| {
                 callbacks.on_error(callbacks.ctx, err);
-                arena.deinit();
                 return;
             };
         }
