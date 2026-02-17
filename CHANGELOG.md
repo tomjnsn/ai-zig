@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-02-16
+
+### Added
+
+- **Live integration tests for tool calling**: OpenAI, Anthropic, Google (#106)
+- **Live integration tests for `generateObject`**: OpenAI, Anthropic, Google (#108)
+- **Live integration tests for `streamObject`**: OpenAI, Google (#110)
+- **Live integration tests for `embed` / `embedMany`**: OpenAI, Google (#112)
+
+### Fixed
+
+- **Tool calling**: Pass `tools` and `tool_choice` through to provider `call_options` (#104)
+- **Live test compilation**: `var`→`const` for unmutated results, `try` in void-returning function, `std.json.stringify`→`Stringify.valueAlloc` (Zig 0.15 API), incorrect embed list append (#114)
+
+### Changed
+
+- 810+ unit tests, 27 live integration tests across all packages
+
 ## [0.2.1] - 2026-02-15
 
 ### Fixed
@@ -25,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- 830+ unit tests passing across all packages (#84-#98)
+- 810+ unit tests passing across all packages (#84-#98)
 
 ## [0.2.0] - 2026-02-14
 
@@ -59,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Consolidated to 14 working provider packages: OpenAI, Anthropic, Google, Google Vertex, Azure, xAI, Perplexity, Together AI, Fireworks, Cerebras, DeepInfra, HuggingFace, OpenAI Compatible, and provider-utils
 - Updated documentation: README, CLAUDE.md, `.env.example` (#80)
-- 830+ unit tests passing across all packages
+- 810+ unit tests passing across all packages
 
 ## [0.1.0] - 2024-12-19
 

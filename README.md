@@ -247,7 +247,7 @@ ai-zig/
 
 ## Testing
 
-The SDK includes comprehensive unit tests (830+ passing, including ~33 compilation-verification tests via `refAllDecls`):
+The SDK includes comprehensive tests (810+ unit tests plus 27 live integration tests across 5 providers):
 
 ```bash
 zig build test
@@ -287,20 +287,18 @@ try std.testing.expectEqualStrings("POST", req.method.toString());
 - `generateText` / `streamText` - text generation and streaming
 - `generateObject` / `streamObject` - structured JSON output with schema validation
 - Tool execution with agentic loop (multi-step)
+- `embed` / `embedMany` - text embedding generation (OpenAI, Google)
 - 5 providers tested: OpenAI, Anthropic, Google, Azure, xAI
 
 ### Working (unit tests only)
-- `embed` / `embedMany` - text embedding generation
 - Middleware chain (rate limiting)
 - `RetryPolicy`, `RequestContext`
 - `generateImage`, `generateSpeech`, `transcribe` - API surface exists, no provider implementations yet
 
 ### Known Issues
-- **Live test coverage**: Live integration tests only cover basic `generateText`/`streamText` and error diagnostics; tool calling, `generateObject`, `streamObject`, and embeddings are not yet tested against real APIs
 - **`ignore_unknown_fields`**: Response structs cover common fields but not every API response field; `ignore_unknown_fields = true` is used for forward compatibility
 
 ### Planned
-- Live integration tests for tool calling, structured output, and embeddings
 - Re-enable removed providers (Mistral, Groq, DeepSeek, Cohere, Bedrock, etc.)
 - Image generation providers (Fal, FLUX, DALL-E)
 - Speech/audio providers (ElevenLabs, Deepgram, etc.)
