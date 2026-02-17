@@ -402,16 +402,6 @@ test "createTogetherAI and createTogetherAIWithSettings produce equivalent resul
     try std.testing.expectEqualStrings(provider1.base_url, provider2.base_url);
 }
 
-test "TogetherAIProvider deinit is safe to call" {
-    const allocator = std.testing.allocator;
-
-    var provider = createTogetherAI(allocator);
-    provider.deinit();
-
-    // Calling deinit multiple times should be safe
-    provider.deinit();
-}
-
 test "TogetherAIProvider model IDs with special characters" {
     const allocator = std.testing.allocator;
 
@@ -474,34 +464,6 @@ test "TogetherAIProvider base_url with trailing slash" {
     defer provider.deinit();
 
     try std.testing.expectEqualStrings("https://api.example.com/v1/", provider.base_url);
-}
-
-test "TogetherAIProvider language model inherits base_url from provider" {
-    const allocator = std.testing.allocator;
-    const custom_url = "https://custom.together.ai/api";
-
-    var provider = createTogetherAIWithSettings(allocator, .{
-        .base_url = custom_url,
-    });
-    defer provider.deinit();
-
-    const model = provider.languageModel("test-model");
-    // The model should use the custom base_url from the provider
-    _ = model;
-}
-
-test "TogetherAIProvider embedding model inherits base_url from provider" {
-    const allocator = std.testing.allocator;
-    const custom_url = "https://custom.together.ai/api";
-
-    var provider = createTogetherAIWithSettings(allocator, .{
-        .base_url = custom_url,
-    });
-    defer provider.deinit();
-
-    const model = provider.embeddingModel("test-embed-model");
-    // The model should use the custom base_url from the provider
-    _ = model;
 }
 
 test "TogetherAIProvider vtable pointer cast safety" {

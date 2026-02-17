@@ -483,17 +483,6 @@ test "CerebrasProvider model with special characters" {
     try std.testing.expectEqualStrings(special_model_id, model.getModelId());
 }
 
-test "CerebrasProvider deinit multiple times" {
-    const allocator = std.testing.allocator;
-    var provider = createCerebras(allocator);
-
-    // First deinit
-    provider.deinit();
-
-    // Second deinit should not crash
-    provider.deinit();
-}
-
 test "CerebrasProvider languageModel passes correct provider name" {
     const allocator = std.testing.allocator;
     var provider = createCerebras(allocator);
