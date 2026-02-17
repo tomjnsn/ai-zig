@@ -18,6 +18,11 @@ pub const DefaultSettingsMiddleware = middleware_mod.DefaultSettingsMiddleware;
 pub const RateLimitMiddleware = middleware_mod.RateLimitMiddleware;
 pub const RetryConfig = middleware_mod.RetryConfig;
 pub const CacheConfig = middleware_mod.CacheConfig;
+pub const TokenCounter = middleware_mod.TokenCounter;
+pub const StructuredLoggingMiddleware = middleware_mod.StructuredLoggingMiddleware;
+pub const StructuredLogEntry = middleware_mod.StructuredLogEntry;
+pub const CacheMiddleware = middleware_mod.CacheMiddleware;
+pub const CachedResponse = middleware_mod.CachedResponse;
 
 // Re-export functions
 pub const createLoggingMiddleware = middleware_mod.createLoggingMiddleware;

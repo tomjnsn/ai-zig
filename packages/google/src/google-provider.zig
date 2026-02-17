@@ -7,6 +7,7 @@ const config_mod = @import("google-config.zig");
 const lang_model = @import("google-generative-ai-language-model.zig");
 const embed_model = @import("google-generative-ai-embedding-model.zig");
 const image_model = @import("google-generative-ai-image-model.zig");
+const gemini_image_mod = @import("google-gemini-image-model.zig");
 const options_mod = @import("google-generative-ai-options.zig");
 
 /// Google Generative AI Provider settings
@@ -111,7 +112,7 @@ pub const GoogleGenerativeAIProvider = struct {
 
     // -- Image Models --
 
-    /// Create an image model
+    /// Create an Imagen image model (for Imagen/predict API models)
     pub fn imageModel(
         self: *Self,
         model_id: []const u8,
@@ -119,7 +120,7 @@ pub const GoogleGenerativeAIProvider = struct {
         return self.imageModelWithSettings(model_id, .{});
     }
 
-    /// Create an image model with settings
+    /// Create an Imagen image model with settings
     pub fn imageModelWithSettings(
         self: *Self,
         model_id: []const u8,
@@ -133,7 +134,29 @@ pub const GoogleGenerativeAIProvider = struct {
         );
     }
 
-    /// Create an image model (alias)
+    /// Create a Gemini image model (for generateContent API with native image generation)
+    pub fn geminiImageModel(
+        self: *Self,
+        model_id: []const u8,
+    ) gemini_image_mod.GoogleGeminiImageModel {
+        return self.geminiImageModelWithSettings(model_id, .{});
+    }
+
+    /// Create a Gemini image model with settings
+    pub fn geminiImageModelWithSettings(
+        self: *Self,
+        model_id: []const u8,
+        settings: gemini_image_mod.GoogleGeminiImageModel.GeminiImageSettings,
+    ) gemini_image_mod.GoogleGeminiImageModel {
+        return gemini_image_mod.GoogleGeminiImageModel.init(
+            self.allocator,
+            model_id,
+            settings,
+            self.config,
+        );
+    }
+
+    /// Create an image model (alias) - dispatches to Gemini or Imagen based on model ID
     pub fn image(self: *Self, model_id: []const u8) image_model.GoogleGenerativeAIImageModel {
         return self.imageModel(model_id);
     }
@@ -170,6 +193,10 @@ pub const GoogleGenerativeAIProvider = struct {
 
     fn imageModelVtable(impl: *anyopaque, model_id: []const u8) provider_v3.ImageModelResult {
         const self: *Self = @ptrCast(@alignCast(impl));
+        if (gemini_image_mod.isGeminiImageModel(model_id)) {
+            var model = self.geminiImageModel(model_id);
+            return .{ .success = model.asImageModel() };
+        }
         var model = self.imageModel(model_id);
         return .{ .success = model.asImageModel() };
     }
@@ -276,4 +303,15 @@ test "GoogleGenerativeAIProvider image model" {
 
     const model = provider.imageModel("imagen-4.0-generate-001");
     try std.testing.expectEqualStrings("imagen-4.0-generate-001", model.getModelId());
+}
+
+test "GoogleGenerativeAIProvider gemini image model" {
+    const allocator = std.testing.allocator;
+
+    var provider = createGoogleGenerativeAI(allocator);
+    defer provider.deinit();
+
+    const model = provider.geminiImageModel("gemini-2.5-flash-image");
+    try std.testing.expectEqualStrings("gemini-2.5-flash-image", model.getModelId());
+    try std.testing.expectEqualStrings("google.generative-ai", model.getProvider());
 }

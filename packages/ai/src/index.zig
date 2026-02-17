@@ -122,6 +122,11 @@ pub const MiddlewareRequest = middleware.MiddlewareRequest;
 pub const MiddlewareResponse = middleware.MiddlewareResponse;
 pub const RequestMiddleware = middleware.RequestMiddleware;
 pub const ResponseMiddleware = middleware.ResponseMiddleware;
+pub const TokenCounter = middleware.TokenCounter;
+pub const StructuredLoggingMiddleware = middleware.StructuredLoggingMiddleware;
+pub const StructuredLogEntry = middleware.StructuredLogEntry;
+pub const CacheMiddleware = middleware.CacheMiddleware;
+pub const CachedResponse = middleware.CachedResponse;
 
 // Version
 pub const VERSION = "0.1.0";

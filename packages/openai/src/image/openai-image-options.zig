@@ -9,6 +9,7 @@ pub const Models = struct {
     pub const dall_e_3 = "dall-e-3";
     pub const gpt_image_1 = "gpt-image-1";
     pub const gpt_image_1_mini = "gpt-image-1-mini";
+    pub const gpt_image_1_5 = "gpt-image-1.5";
 };
 
 /// Max images per call for each model
@@ -146,5 +147,12 @@ test "modelMaxImagesPerCall" {
 test "hasDefaultResponseFormat" {
     try std.testing.expect(hasDefaultResponseFormat("gpt-image-1"));
     try std.testing.expect(hasDefaultResponseFormat("gpt-image-1-mini"));
+    try std.testing.expect(hasDefaultResponseFormat("gpt-image-1.5"));
     try std.testing.expect(!hasDefaultResponseFormat("dall-e-3"));
+}
+
+test "gpt-image-1.5 model" {
+    try std.testing.expectEqualStrings("gpt-image-1.5", Models.gpt_image_1_5);
+    try std.testing.expectEqual(@as(usize, 10), modelMaxImagesPerCall(Models.gpt_image_1_5));
+    try std.testing.expect(hasDefaultResponseFormat(Models.gpt_image_1_5));
 }
