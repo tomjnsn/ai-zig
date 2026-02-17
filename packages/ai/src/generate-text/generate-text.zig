@@ -378,6 +378,29 @@ pub fn generateText(
             prompt_msgs.append(arena_allocator, msg) catch return GenerateTextError.OutOfMemory;
         }
 
+        // Convert AI-layer tools to provider-layer tools
+        const provider_tools: ?[]const provider_types.LanguageModelV3CallOptions.Tool = if (options.tools) |tools| blk: {
+            const result = arena_allocator.alloc(provider_types.LanguageModelV3CallOptions.Tool, tools.len) catch
+                return GenerateTextError.OutOfMemory;
+            for (tools, 0..) |td, i| {
+                result[i] = .{ .function = .{
+                    .name = td.name,
+                    .description = td.description,
+                    .input_schema = provider_types.JsonValue.fromStdJson(arena_allocator, td.parameters) catch
+                        return GenerateTextError.OutOfMemory,
+                } };
+            }
+            break :blk result;
+        } else null;
+
+        // Convert AI-layer tool_choice to provider-layer tool_choice
+        const provider_tool_choice: ?provider_types.LanguageModelV3ToolChoice = if (provider_tools != null) switch (options.tool_choice) {
+            .auto => .auto,
+            .none => .none,
+            .required => .required,
+            .tool => |name| .{ .tool = .{ .tool_name = name } },
+        } else null;
+
         // Build call options
         const call_options = provider_types.LanguageModelV3CallOptions{
             .prompt = prompt_msgs.items,
@@ -389,6 +412,8 @@ pub fn generateText(
             .presence_penalty = if (options.settings.presence_penalty) |p| @as(f32, @floatCast(p)) else null,
             .frequency_penalty = if (options.settings.frequency_penalty) |f| @as(f32, @floatCast(f)) else null,
             .seed = if (options.settings.seed) |s| @as(i64, @intCast(s)) else null,
+            .tools = provider_tools,
+            .tool_choice = provider_tool_choice,
             .error_diagnostic = options.error_diagnostic,
         };
 
@@ -1228,4 +1253,91 @@ test "generateText executes tools in agentic loop" {
     // Total usage should be sum of both steps
     try std.testing.expectEqual(@as(?u64, 25), result.total_usage.input_tokens);
     try std.testing.expectEqual(@as(?u64, 15), result.total_usage.output_tokens);
+}
+
+test "generateText passes tools through to provider call_options" {
+    const MockVerifyToolsModel = struct {
+        received_tools: bool = false,
+        received_tool_count: usize = 0,
+        received_tool_choice: bool = false,
+
+        const Self = @This();
+
+        pub fn getProvider(_: *const Self) []const u8 {
+            return "mock";
+        }
+
+        pub fn getModelId(_: *const Self) []const u8 {
+            return "mock-verify-tools";
+        }
+
+        pub fn getSupportedUrls(
+            _: *const Self,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.SupportedUrlsResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            callback(ctx, .{ .failure = error.Unsupported });
+        }
+
+        pub fn doGenerate(
+            self: *Self,
+            call_options: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callback: *const fn (?*anyopaque, LanguageModelV3.GenerateResult) void,
+            ctx: ?*anyopaque,
+        ) void {
+            // Verify tools were passed through
+            self.received_tools = call_options.hasTools();
+            self.received_tool_count = call_options.getToolCount();
+            self.received_tool_choice = call_options.tool_choice != null;
+
+            const text_content = [_]provider_types.LanguageModelV3Content{
+                .{ .text = .{ .text = "ok" } },
+            };
+            callback(ctx, .{ .success = .{
+                .content = &text_content,
+                .finish_reason = .stop,
+                .usage = provider_types.LanguageModelV3Usage.initWithTotals(5, 5),
+            } });
+        }
+
+        pub fn doStream(
+            _: *Self,
+            _: provider_types.LanguageModelV3CallOptions,
+            _: std.mem.Allocator,
+            callbacks: LanguageModelV3.StreamCallbacks,
+        ) void {
+            callbacks.on_complete(callbacks.ctx, null);
+        }
+    };
+
+    var mock = MockVerifyToolsModel{};
+    var model = provider_types.asLanguageModel(MockVerifyToolsModel, &mock);
+
+    const tools = [_]ToolDefinition{
+        .{
+            .name = "get_weather",
+            .description = "Get weather",
+            .parameters = .null,
+        },
+        .{
+            .name = "search",
+            .description = "Search the web",
+            .parameters = .null,
+        },
+    };
+
+    var result = try generateText(std.testing.allocator, .{
+        .model = &model,
+        .prompt = "test",
+        .tools = &tools,
+        .tool_choice = .required,
+    });
+    defer result.deinit(std.testing.allocator);
+
+    // Verify the mock saw the tools
+    try std.testing.expect(mock.received_tools);
+    try std.testing.expectEqual(@as(usize, 2), mock.received_tool_count);
+    try std.testing.expect(mock.received_tool_choice);
 }
