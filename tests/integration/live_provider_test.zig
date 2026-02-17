@@ -688,3 +688,126 @@ test "live: Google tool calling" {
     try testing.expect(result.tool_calls.len > 0);
     try testing.expectEqualStrings("get_weather", result.tool_calls[0].tool_name);
 }
+
+// ============================================================================
+// generateObject
+// ============================================================================
+
+const person_schema_json =
+    \\{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}},"required":["name","age"]}
+;
+
+fn parsePersonSchema(allocator: std.mem.Allocator) !std.json.Parsed(std.json.Value) {
+    return std.json.parseFromSlice(std.json.Value, allocator, person_schema_json, .{});
+}
+
+test "live: OpenAI generateObject" {
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = openai.createOpenAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("gpt-4o-mini");
+    var lm = model.asLanguageModel();
+
+    var schema = try parsePersonSchema(allocator);
+    defer schema.deinit();
+
+    var result = ai.generateObject(allocator, .{
+        .model = &lm,
+        .prompt = "Generate a fictional person with a name and age.",
+        .schema = .{ .json_schema = schema.value },
+    }) catch |err| {
+        std.debug.print("OpenAI generateObject error: {}\n", .{err});
+        return err;
+    };
+    defer result.deinit();
+
+    try testing.expect(result.object == .object);
+    const obj = result.object.object;
+    const name_val = obj.get("name") orelse return error.TestUnexpectedResult;
+    try testing.expect(name_val == .string);
+    const age_val = obj.get("age") orelse return error.TestUnexpectedResult;
+    try testing.expect(age_val == .integer);
+}
+
+test "live: Anthropic generateObject" {
+    const api_key = getEnv("ANTHROPIC_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = anthropic.createAnthropicWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("claude-sonnet-4-5-20250929");
+    var lm = model.asLanguageModel();
+
+    var schema = try parsePersonSchema(allocator);
+    defer schema.deinit();
+
+    var result = ai.generateObject(allocator, .{
+        .model = &lm,
+        .prompt = "Generate a fictional person with a name and age.",
+        .schema = .{ .json_schema = schema.value },
+    }) catch |err| {
+        std.debug.print("Anthropic generateObject error: {}\n", .{err});
+        return err;
+    };
+    defer result.deinit();
+
+    try testing.expect(result.object == .object);
+    const obj = result.object.object;
+    const name_val = obj.get("name") orelse return error.TestUnexpectedResult;
+    try testing.expect(name_val == .string);
+    const age_val = obj.get("age") orelse return error.TestUnexpectedResult;
+    try testing.expect(age_val == .integer);
+}
+
+test "live: Google generateObject" {
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = google.createGoogleGenerativeAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("gemini-2.0-flash");
+    var lm = model.asLanguageModel();
+
+    var schema = try parsePersonSchema(allocator);
+    defer schema.deinit();
+
+    var result = ai.generateObject(allocator, .{
+        .model = &lm,
+        .prompt = "Generate a fictional person with a name and age.",
+        .schema = .{ .json_schema = schema.value },
+    }) catch |err| {
+        std.debug.print("Google generateObject error: {}\n", .{err});
+        return err;
+    };
+    defer result.deinit();
+
+    try testing.expect(result.object == .object);
+    const obj = result.object.object;
+    const name_val = obj.get("name") orelse return error.TestUnexpectedResult;
+    try testing.expect(name_val == .string);
+    const age_val = obj.get("age") orelse return error.TestUnexpectedResult;
+    try testing.expect(age_val == .integer);
+}
