@@ -811,3 +811,131 @@ test "live: Google generateObject" {
     const age_val = obj.get("age") orelse return error.TestUnexpectedResult;
     try testing.expect(age_val == .integer);
 }
+
+// ============================================================================
+// streamObject
+// ============================================================================
+
+const ObjectStreamPart = ai.generate_object.ObjectStreamPart;
+const ObjectStreamCallbacks = ai.generate_object.ObjectStreamCallbacks;
+
+const ObjectStreamTestCtx = struct {
+    partial_count: u32 = 0,
+    got_finish: bool = false,
+    completed: bool = false,
+    error_count: u32 = 0,
+
+    fn onPart(part: ObjectStreamPart, ctx_raw: ?*anyopaque) void {
+        if (ctx_raw) |p| {
+            const self: *ObjectStreamTestCtx = @ptrCast(@alignCast(p));
+            switch (part) {
+                .partial => self.partial_count += 1,
+                .finish => self.got_finish = true,
+                else => {},
+            }
+        }
+    }
+
+    fn onError(_: anyerror, ctx_raw: ?*anyopaque) void {
+        if (ctx_raw) |p| {
+            const self: *ObjectStreamTestCtx = @ptrCast(@alignCast(p));
+            self.error_count += 1;
+        }
+    }
+
+    fn onComplete(ctx_raw: ?*anyopaque) void {
+        if (ctx_raw) |p| {
+            const self: *ObjectStreamTestCtx = @ptrCast(@alignCast(p));
+            self.completed = true;
+        }
+    }
+
+    fn callbacks(self: *ObjectStreamTestCtx) ObjectStreamCallbacks {
+        return .{
+            .on_part = onPart,
+            .on_error = onError,
+            .on_complete = onComplete,
+            .context = @ptrCast(self),
+        };
+    }
+};
+
+test "live: OpenAI streamObject" {
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = openai.createOpenAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("gpt-4o-mini");
+    var lm = model.asLanguageModel();
+
+    var schema = try parsePersonSchema(allocator);
+    defer schema.deinit();
+
+    var ctx = ObjectStreamTestCtx{};
+
+    const result = ai.streamObject(allocator, .{
+        .model = &lm,
+        .prompt = "Generate a fictional person with a name and age.",
+        .schema = .{ .json_schema = schema.value },
+        .callbacks = ctx.callbacks(),
+    }) catch |err| {
+        std.debug.print("OpenAI streamObject error: {}\n", .{err});
+        return err;
+    };
+    defer {
+        result.deinit();
+        allocator.destroy(result);
+    }
+
+    try testing.expect(ctx.completed);
+    try testing.expect(ctx.error_count == 0);
+    try testing.expect(result.getObject() != null);
+}
+
+test "live: Google streamObject" {
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = google.createGoogleGenerativeAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("gemini-2.0-flash");
+    var lm = model.asLanguageModel();
+
+    var schema = try parsePersonSchema(allocator);
+    defer schema.deinit();
+
+    var ctx = ObjectStreamTestCtx{};
+
+    const result = ai.streamObject(allocator, .{
+        .model = &lm,
+        .prompt = "Generate a fictional person with a name and age.",
+        .schema = .{ .json_schema = schema.value },
+        .callbacks = ctx.callbacks(),
+    }) catch |err| {
+        std.debug.print("Google streamObject error: {}\n", .{err});
+        return err;
+    };
+    defer {
+        result.deinit();
+        allocator.destroy(result);
+    }
+
+    try testing.expect(ctx.completed);
+    try testing.expect(ctx.error_count == 0);
+    try testing.expect(result.getObject() != null);
+}
