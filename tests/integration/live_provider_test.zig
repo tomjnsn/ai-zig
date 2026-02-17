@@ -939,3 +939,134 @@ test "live: Google streamObject" {
     try testing.expect(ctx.error_count == 0);
     try testing.expect(result.getObject() != null);
 }
+
+// ============================================================================
+// embed / embedMany
+// ============================================================================
+
+test "live: OpenAI embed" {
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = openai.createOpenAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.embeddingModel("text-embedding-3-small");
+    var em = model.asEmbeddingModel();
+
+    var result = ai.embed(allocator, .{
+        .model = &em,
+        .value = "Hello world",
+    }) catch |err| {
+        std.debug.print("OpenAI embed error: {}\n", .{err});
+        return err;
+    };
+    defer allocator.free(result.embedding.values);
+
+    try testing.expect(result.embedding.values.len > 0);
+    try testing.expect(result.usage.tokens != null);
+}
+
+test "live: OpenAI embedMany" {
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = openai.createOpenAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.embeddingModel("text-embedding-3-small");
+    var em = model.asEmbeddingModel();
+
+    const inputs = [_][]const u8{ "Hello", "World", "Test" };
+    var result = ai.embedMany(allocator, .{
+        .model = &em,
+        .values = &inputs,
+    }) catch |err| {
+        std.debug.print("OpenAI embedMany error: {}\n", .{err});
+        return err;
+    };
+    defer {
+        for (result.embeddings) |e| allocator.free(e.values);
+        allocator.free(result.embeddings);
+    }
+
+    try testing.expectEqual(@as(usize, 3), result.embeddings.len);
+    for (result.embeddings) |e| {
+        try testing.expect(e.values.len > 0);
+    }
+}
+
+test "live: Google embed" {
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = google.createGoogleGenerativeAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.embeddingModel("text-embedding-004");
+    var em = model.asEmbeddingModel();
+
+    var result = ai.embed(allocator, .{
+        .model = &em,
+        .value = "Hello world",
+    }) catch |err| {
+        std.debug.print("Google embed error: {}\n", .{err});
+        return err;
+    };
+    defer allocator.free(result.embedding.values);
+
+    try testing.expect(result.embedding.values.len > 0);
+}
+
+test "live: Google embedMany" {
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = google.createGoogleGenerativeAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.embeddingModel("text-embedding-004");
+    var em = model.asEmbeddingModel();
+
+    const inputs = [_][]const u8{ "Hello", "World", "Test" };
+    var result = ai.embedMany(allocator, .{
+        .model = &em,
+        .values = &inputs,
+    }) catch |err| {
+        std.debug.print("Google embedMany error: {}\n", .{err});
+        return err;
+    };
+    defer {
+        for (result.embeddings) |e| allocator.free(e.values);
+        allocator.free(result.embeddings);
+    }
+
+    try testing.expectEqual(@as(usize, 3), result.embeddings.len);
+    for (result.embeddings) |e| {
+        try testing.expect(e.values.len > 0);
+    }
+}
