@@ -110,14 +110,17 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
 
         if (values.len == 1) {
             // Single embedding request
-            try body.put("model", .{ .string = std.fmt.allocPrint(
+            body.put("model", .{ .string = std.fmt.allocPrint(
                 request_allocator,
                 "models/{s}",
                 .{self.model_id},
             ) catch |err| {
                 callback(callback_context, .{ .failure = err });
                 return;
-            } });
+            } }) catch |err| {
+                callback(callback_context, .{ .failure = err });
+                return;
+            };
 
             var content = std.json.ObjectMap.init(request_allocator);
             var parts = std.json.Array.init(request_allocator);
@@ -227,8 +230,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).empty;
-        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer(request_allocator)) catch |err| {
+        const body_bytes = std.json.Stringify.valueAlloc(request_allocator, std.json.Value{ .object = body }, .{}) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -265,7 +267,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                 .method = .POST,
                 .url = url,
                 .headers = header_list.items,
-                .body = body_buffer.items,
+                .body = body_bytes,
             },
             request_allocator,
             struct {
@@ -320,7 +322,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                         callback(callback_context, .{ .failure = error.OutOfMemory });
                         return;
                     };
-                    embed_list.append(result_allocator, .{ .embedding = .{ .float = values_copy } }) catch |err| {
+                    embed_list.append(result_allocator, values_copy) catch |err| {
                         callback(callback_context, .{ .failure = err });
                         return;
                     };
@@ -341,7 +343,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };
-                        embed_list.append(result_allocator, .{ .embedding = .{ .float = values_copy } }) catch |err| {
+                        embed_list.append(result_allocator, values_copy) catch |err| {
                             callback(callback_context, .{ .failure = err });
                             return;
                         };

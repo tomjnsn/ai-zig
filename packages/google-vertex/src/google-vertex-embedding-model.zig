@@ -174,8 +174,7 @@ pub const GoogleVertexEmbeddingModel = struct {
         };
 
         // Serialize request body
-        var body_buffer = std.ArrayList(u8).empty;
-        std.json.stringify(.{ .object = body }, .{}, body_buffer.writer(request_allocator)) catch |err| {
+        const body_bytes = std.json.Stringify.valueAlloc(request_allocator, std.json.Value{ .object = body }, .{}) catch |err| {
             callback(callback_context, .{ .failure = err });
             return;
         };
@@ -212,7 +211,7 @@ pub const GoogleVertexEmbeddingModel = struct {
                 .method = .POST,
                 .url = url,
                 .headers = header_list.items,
-                .body = body_buffer.items,
+                .body = body_bytes,
             },
             request_allocator,
             struct {
