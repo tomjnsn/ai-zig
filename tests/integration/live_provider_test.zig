@@ -960,7 +960,7 @@ test "live: OpenAI embed" {
     var model = provider.embeddingModel("text-embedding-3-small");
     var em = model.asEmbeddingModel();
 
-    var result = ai.embed(allocator, .{
+    const result = ai.embed(allocator, .{
         .model = &em,
         .value = "Hello world",
     }) catch |err| {
@@ -990,7 +990,7 @@ test "live: OpenAI embedMany" {
     var em = model.asEmbeddingModel();
 
     const inputs = [_][]const u8{ "Hello", "World", "Test" };
-    var result = ai.embedMany(allocator, .{
+    const result = ai.embedMany(allocator, .{
         .model = &em,
         .values = &inputs,
     }) catch |err| {
@@ -1024,7 +1024,7 @@ test "live: Google embed" {
     var model = provider.embeddingModel("text-embedding-004");
     var em = model.asEmbeddingModel();
 
-    var result = ai.embed(allocator, .{
+    const result = ai.embed(allocator, .{
         .model = &em,
         .value = "Hello world",
     }) catch |err| {
@@ -1053,7 +1053,7 @@ test "live: Google embedMany" {
     var em = model.asEmbeddingModel();
 
     const inputs = [_][]const u8{ "Hello", "World", "Test" };
-    var result = ai.embedMany(allocator, .{
+    const result = ai.embedMany(allocator, .{
         .model = &em,
         .values = &inputs,
     }) catch |err| {
