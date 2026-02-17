@@ -340,6 +340,29 @@ pub fn streamText(
         }
     }
 
+    // Convert AI-layer tools to provider-layer tools
+    const provider_tools: ?[]const provider_types.LanguageModelV3CallOptions.Tool = if (options.tools) |tools| blk: {
+        const tool_result = arena_allocator.alloc(provider_types.LanguageModelV3CallOptions.Tool, tools.len) catch
+            return StreamTextError.OutOfMemory;
+        for (tools, 0..) |td, i| {
+            tool_result[i] = .{ .function = .{
+                .name = td.name,
+                .description = td.description,
+                .input_schema = provider_types.JsonValue.fromStdJson(arena_allocator, td.parameters) catch
+                    return StreamTextError.OutOfMemory,
+            } };
+        }
+        break :blk tool_result;
+    } else null;
+
+    // Convert AI-layer tool_choice to provider-layer tool_choice
+    const provider_tool_choice: ?provider_types.LanguageModelV3ToolChoice = if (provider_tools != null) switch (options.tool_choice) {
+        .auto => .auto,
+        .none => .none,
+        .required => .required,
+        .tool => |name| .{ .tool = .{ .tool_name = name } },
+    } else null;
+
     // Build call options
     const call_options = provider_types.LanguageModelV3CallOptions{
         .prompt = prompt_msgs.items,
@@ -351,6 +374,8 @@ pub fn streamText(
         .presence_penalty = if (options.settings.presence_penalty) |p| @as(f32, @floatCast(p)) else null,
         .frequency_penalty = if (options.settings.frequency_penalty) |f| @as(f32, @floatCast(f)) else null,
         .seed = if (options.settings.seed) |s| @as(i64, @intCast(s)) else null,
+        .tools = provider_tools,
+        .tool_choice = provider_tool_choice,
         .error_diagnostic = options.error_diagnostic,
     };
 
