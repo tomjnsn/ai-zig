@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the Zig AI SDK!
 
 ## Development Setup
 
-1. **Install Zig**: Ensure you have Zig 0.13.0 or later installed
+1. **Install Zig**: Ensure you have Zig 0.15.0 or later installed
    ```bash
    # Check your Zig version
    zig version
@@ -12,8 +12,8 @@ Thank you for your interest in contributing to the Zig AI SDK!
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-org/zig-ai-sdk.git
-   cd zig-ai-sdk
+   git clone https://github.com/evmts/ai-zig.git
+   cd ai-zig
    ```
 
 3. **Build the project**:
@@ -42,7 +42,7 @@ Thank you for your interest in contributing to the Zig AI SDK!
 2. Create the provider file following this pattern:
    ```zig
    const std = @import("std");
-   const provider_v3 = @import("../../provider/src/provider/v3/index.zig");
+   const provider = @import("provider");
 
    pub const MyProviderSettings = struct {
        base_url: ?[]const u8 = null,
@@ -91,15 +91,7 @@ Thank you for your interest in contributing to the Zig AI SDK!
    }
    ```
 
-4. Add the provider to `build.zig`:
-   ```zig
-   const my_provider_mod = b.addModule("my-provider", .{
-       .root_source_file = b.path("packages/my-provider/src/index.zig"),
-       .target = target,
-       .optimize = optimize,
-   });
-   my_provider_mod.addImport("provider", provider_mod);
-   ```
+4. Add the provider to `build.zig` — add an entry to the `test_configs` array and create a module with appropriate imports. See existing providers in `build.zig` for the current pattern.
 
 5. Add tests in the provider file and integration tests
 
