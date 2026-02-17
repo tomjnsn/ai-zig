@@ -1070,3 +1070,70 @@ test "live: Google embedMany" {
         try testing.expect(e.values.len > 0);
     }
 }
+
+// ============================================================================
+// Image Generation
+// ============================================================================
+
+test "live: OpenAI generateImage" {
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = openai.createOpenAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.imageModel("gpt-image-1");
+    var im = model.asImageModel();
+
+    const result = ai.generateImage(allocator, .{
+        .model = &im,
+        .prompt = "A small red circle on a white background",
+    }) catch |err| {
+        std.debug.print("OpenAI generateImage error: {}\n", .{err});
+        return err;
+    };
+    defer {
+        allocator.free(result.images);
+    }
+
+    try testing.expect(result.images.len > 0);
+    try testing.expect(result.images[0].base64 != null);
+    try testing.expectEqualStrings("gpt-image-1", result.response.model_id);
+}
+
+test "live: Google Gemini generateImage" {
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = google.createGoogleGenerativeAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.geminiImageModel("gemini-2.0-flash-exp");
+    var im = model.asImageModel();
+
+    const result = ai.generateImage(allocator, .{
+        .model = &im,
+        .prompt = "A small blue square on a white background",
+    }) catch |err| {
+        std.debug.print("Google Gemini generateImage error: {}\n", .{err});
+        return err;
+    };
+    defer {
+        allocator.free(result.images);
+    }
+
+    try testing.expect(result.images.len > 0);
+    try testing.expect(result.images[0].base64 != null);
+}
