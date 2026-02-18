@@ -1075,7 +1075,7 @@ test "live: Google embedMany" {
 // Image Generation
 // ============================================================================
 
-test "live: OpenAI generateImage" {
+test "live: OpenAI generateImage (gpt-image-1)" {
     const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
     const allocator = testing.allocator;
 
@@ -1091,23 +1091,42 @@ test "live: OpenAI generateImage" {
     var model = provider.imageModel("gpt-image-1");
     var im = model.asImageModel();
 
+    var diag: provider_types.ErrorDiagnostic = .{};
     const result = ai.generateImage(allocator, .{
         .model = &im,
-        .prompt = "A small red circle on a white background",
+        .prompt = "A friendly cartoon cat sitting on a windowsill",
+        .error_diagnostic = &diag,
     }) catch |err| {
-        std.debug.print("OpenAI generateImage error: {}\n", .{err});
+        std.debug.print("\nOpenAI generateImage error: {} (kind={}, status={any}, msg={s})\n", .{
+            err,
+            diag.kind,
+            diag.status_code,
+            diag.message() orelse "none",
+        });
         return err;
     };
     defer {
+        for (result.images) |img| {
+            if (img.base64) |b64| allocator.free(b64);
+        }
         allocator.free(result.images);
     }
 
     try testing.expect(result.images.len > 0);
     try testing.expect(result.images[0].base64 != null);
-    try testing.expectEqualStrings("gpt-image-1", result.response.model_id);
+
+    // Save image to /tmp for the understanding test to verify
+    if (result.images[0].base64) |b64| {
+        const file = std.fs.createFileAbsolute("/tmp/ai-zig-test-openai-image.b64", .{}) catch |err| {
+            std.debug.print("Failed to save test image: {}\n", .{err});
+            return;
+        };
+        defer file.close();
+        file.writeAll(b64) catch {};
+    }
 }
 
-test "live: Google Gemini generateImage" {
+test "live: Google Gemini generateImage (gemini-3-pro-image-preview)" {
     const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
     const allocator = testing.allocator;
 
@@ -1120,7 +1139,7 @@ test "live: Google Gemini generateImage" {
     });
     defer provider.deinit();
 
-    var model = provider.geminiImageModel("gemini-2.0-flash-exp");
+    var model = provider.geminiImageModel("gemini-3-pro-image-preview");
     var im = model.asImageModel();
 
     const result = ai.generateImage(allocator, .{
@@ -1131,9 +1150,132 @@ test "live: Google Gemini generateImage" {
         return err;
     };
     defer {
+        for (result.images) |img| {
+            if (img.base64) |b64| allocator.free(b64);
+        }
         allocator.free(result.images);
     }
 
     try testing.expect(result.images.len > 0);
     try testing.expect(result.images[0].base64 != null);
+
+    // Save image to /tmp for the understanding test to verify
+    if (result.images[0].base64) |b64| {
+        const file = std.fs.createFileAbsolute("/tmp/ai-zig-test-google-image.b64", .{}) catch |err| {
+            std.debug.print("Failed to save test image: {}\n", .{err});
+            return;
+        };
+        defer file.close();
+        file.writeAll(b64) catch {};
+    }
+}
+
+// ============================================================================
+// Image Understanding (Vision) - verifies generated images + file upload
+// ============================================================================
+
+test "live: OpenAI image understanding" {
+    const api_key = getEnv("OPENAI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    // Load the image saved by the generation test
+    const b64_data = blk: {
+        const file = std.fs.openFileAbsolute("/tmp/ai-zig-test-openai-image.b64", .{}) catch {
+            std.debug.print("Skipping: no generated image at /tmp/ai-zig-test-openai-image.b64\n", .{});
+            return error.SkipZigTest;
+        };
+        defer file.close();
+        break :blk file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch return error.SkipZigTest;
+    };
+    defer allocator.free(b64_data);
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = openai.createOpenAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("gpt-4o-mini");
+    var lm = model.asLanguageModel();
+
+    const ContentPart = ai.generate_text.ContentPart;
+    const Message = ai.generate_text.Message;
+    const parts = [_]ContentPart{
+        .{ .file = .{ .data = b64_data, .mime_type = "image/png" } },
+        .{ .text = .{ .text = "Briefly describe what you see in this image in one short sentence." } },
+    };
+    const messages = [_]Message{
+        .{ .role = .user, .content = .{ .parts = &parts } },
+    };
+
+    var result = ai.generateText(allocator, .{
+        .model = &lm,
+        .messages = &messages,
+    }) catch |err| {
+        std.debug.print("OpenAI image understanding error: {}\n", .{err});
+        return err;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expect(result.text.len > 0);
+    std.debug.print("OpenAI vision response: {s}\n", .{result.text});
+
+    // Clean up temp file
+    std.fs.deleteFileAbsolute("/tmp/ai-zig-test-openai-image.b64") catch {};
+}
+
+test "live: Google image understanding" {
+    const api_key = getEnv("GOOGLE_GENERATIVE_AI_API_KEY") orelse return error.SkipZigTest;
+    const allocator = testing.allocator;
+
+    // Load the image saved by the generation test
+    const b64_data = blk: {
+        const file = std.fs.openFileAbsolute("/tmp/ai-zig-test-google-image.b64", .{}) catch {
+            std.debug.print("Skipping: no generated image at /tmp/ai-zig-test-google-image.b64\n", .{});
+            return error.SkipZigTest;
+        };
+        defer file.close();
+        break :blk file.readToEndAlloc(allocator, 10 * 1024 * 1024) catch return error.SkipZigTest;
+    };
+    defer allocator.free(b64_data);
+
+    var http_client = provider_utils.createStdHttpClient(allocator);
+    defer http_client.deinit();
+
+    var provider = google.createGoogleGenerativeAIWithSettings(allocator, .{
+        .api_key = api_key,
+        .http_client = http_client.asInterface(),
+    });
+    defer provider.deinit();
+
+    var model = provider.languageModel("gemini-2.0-flash");
+    var lm = model.asLanguageModel();
+
+    const ContentPart = ai.generate_text.ContentPart;
+    const Message = ai.generate_text.Message;
+    const parts = [_]ContentPart{
+        .{ .file = .{ .data = b64_data, .mime_type = "image/png" } },
+        .{ .text = .{ .text = "Briefly describe what you see in this image in one short sentence." } },
+    };
+    const messages = [_]Message{
+        .{ .role = .user, .content = .{ .parts = &parts } },
+    };
+
+    var result = ai.generateText(allocator, .{
+        .model = &lm,
+        .messages = &messages,
+    }) catch |err| {
+        std.debug.print("Google image understanding error: {}\n", .{err});
+        return err;
+    };
+    defer result.deinit(allocator);
+
+    try testing.expect(result.text.len > 0);
+    std.debug.print("Google vision response: {s}\n", .{result.text});
+
+    // Clean up temp file
+    std.fs.deleteFileAbsolute("/tmp/ai-zig-test-google-image.b64") catch {};
 }

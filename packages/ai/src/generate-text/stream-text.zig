@@ -8,6 +8,7 @@ const LanguageModelUsage = generate_text.LanguageModelUsage;
 const ToolCall = generate_text.ToolCall;
 const ToolResult = generate_text.ToolResult;
 const ContentPart = generate_text.ContentPart;
+const prompt_types = provider_types.language_model.language_model_v3_prompt;
 const ResponseMetadata = generate_text.ResponseMetadata;
 const StepResult = generate_text.StepResult;
 const CallSettings = generate_text.CallSettings;
@@ -336,7 +337,67 @@ pub fn streamText(
                     .tool => {},
                 }
             },
-            .parts => {},
+            .parts => |parts| {
+                switch (msg.role) {
+                    .system => {
+                        for (parts) |part| {
+                            switch (part) {
+                                .text => |t| {
+                                    prompt_msgs.append(arena_allocator, provider_types.language_model.systemMessage(t.text)) catch return StreamTextError.OutOfMemory;
+                                },
+                                else => {},
+                            }
+                        }
+                    },
+                    .user => {
+                        var user_parts = std.ArrayList(prompt_types.UserPart).empty;
+                        for (parts) |part| {
+                            switch (part) {
+                                .text => |t| {
+                                    user_parts.append(arena_allocator, .{ .text = .{ .text = t.text } }) catch return StreamTextError.OutOfMemory;
+                                },
+                                .file => |f| {
+                                    user_parts.append(arena_allocator, .{ .file = .{
+                                        .data = .{ .base64 = f.data },
+                                        .media_type = f.mime_type,
+                                    } }) catch return StreamTextError.OutOfMemory;
+                                },
+                                else => {},
+                            }
+                        }
+                        if (user_parts.items.len > 0) {
+                            prompt_msgs.append(arena_allocator, .{
+                                .role = .user,
+                                .content = .{ .user = user_parts.items },
+                            }) catch return StreamTextError.OutOfMemory;
+                        }
+                    },
+                    .assistant => {
+                        var asst_parts = std.ArrayList(prompt_types.AssistantPart).empty;
+                        for (parts) |part| {
+                            switch (part) {
+                                .text => |t| {
+                                    asst_parts.append(arena_allocator, .{ .text = .{ .text = t.text } }) catch return StreamTextError.OutOfMemory;
+                                },
+                                .file => |f| {
+                                    asst_parts.append(arena_allocator, .{ .file = .{
+                                        .data = .{ .base64 = f.data },
+                                        .media_type = f.mime_type,
+                                    } }) catch return StreamTextError.OutOfMemory;
+                                },
+                                else => {},
+                            }
+                        }
+                        if (asst_parts.items.len > 0) {
+                            prompt_msgs.append(arena_allocator, .{
+                                .role = .assistant,
+                                .content = .{ .assistant = asst_parts.items },
+                            }) catch return StreamTextError.OutOfMemory;
+                        }
+                    },
+                    .tool => {},
+                }
+            },
         }
     }
 

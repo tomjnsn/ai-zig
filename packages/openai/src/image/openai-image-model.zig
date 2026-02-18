@@ -177,8 +177,8 @@ pub const OpenAIImageModel = struct {
         }
         const response_body = http_response.body;
 
-        // Parse response
-        const parsed = std.json.parseFromSlice(api.OpenAIImageResponse, request_allocator, response_body, .{}) catch {
+        // Parse response (ignore unknown fields for forward compatibility)
+        const parsed = std.json.parseFromSlice(api.OpenAIImageResponse, request_allocator, response_body, .{ .ignore_unknown_fields = true }) catch {
             return error.InvalidResponse;
         };
         defer parsed.deinit();
@@ -197,19 +197,12 @@ pub const OpenAIImageModel = struct {
             .total_tokens = u.total_tokens,
         } else null;
 
-        // Clone warnings
-        var result_warnings = try result_allocator.alloc(shared.SharedV3Warning, warnings.items.len);
-        for (warnings.items, 0..) |w, i| {
-            result_warnings[i] = w;
-        }
-
         return .{
             .images = .{ .base64 = images_list },
             .usage = usage,
-            .warnings = result_warnings,
             .response = .{
                 .timestamp = timestamp,
-                .model_id = try result_allocator.dupe(u8, self.model_id),
+                .model_id = self.model_id,
                 .headers = null,
             },
         };
@@ -282,7 +275,7 @@ pub const GenerateResult = im.ImageModelV3.GenerateResult;
 
 /// Serialize request to JSON
 fn serializeRequest(allocator: std.mem.Allocator, request: api.OpenAIImageGenerationRequest) ![]const u8 {
-    return std.json.Stringify.valueAlloc(allocator, request, .{});
+    return std.json.Stringify.valueAlloc(allocator, request, .{ .emit_null_optional_fields = false });
 }
 
 test "OpenAIImageModel basic" {
