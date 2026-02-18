@@ -177,7 +177,7 @@ pub const OpenAIImageModel = struct {
         }
         const response_body = http_response.body;
 
-        // Parse response (ignore unknown fields for forward compatibility)
+        // Parse response (ignore unknown fields for forward compatibility with API changes)
         const parsed = std.json.parseFromSlice(api.OpenAIImageResponse, request_allocator, response_body, .{ .ignore_unknown_fields = true }) catch {
             return error.InvalidResponse;
         };
@@ -275,6 +275,8 @@ pub const GenerateResult = im.ImageModelV3.GenerateResult;
 
 /// Serialize request to JSON
 fn serializeRequest(allocator: std.mem.Allocator, request: api.OpenAIImageGenerationRequest) ![]const u8 {
+    // Must omit null fields: gpt-image-1 rejects unknown parameters like "style"
+    // that are valid for dall-e-3 but not for this model.
     return std.json.Stringify.valueAlloc(allocator, request, .{ .emit_null_optional_fields = false });
 }
 
