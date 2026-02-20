@@ -181,3 +181,17 @@ The `@alignCast` is safe when:
 2. The vtable and impl are always paired correctly (same instance)
 
 All vtable implementations in this codebase follow this pattern, ensuring alignment is preserved through the type-erasure round-trip.
+
+## JSON Parsing and Serialization Conventions
+
+### Response Parsing (`ignore_unknown_fields`)
+
+Provider response structs should capture **all known fields** from the API. When adding or modifying response parsing:
+
+1. **During development**: Set `ignore_unknown_fields = false` (strict mode) and run live tests. If parsing fails, identify the unknown field(s) from the API response and add them to the response struct.
+2. **Once all fields are captured**: Set `ignore_unknown_fields = true` for production resilience. This ensures apps built on this library won't break when a provider adds new response fields.
+3. **If a user reports a missing field**: Repeat the process — temporarily set to `false`, identify the new field, add it, then set back to `true`.
+
+### Request Serialization (`emit_null_optional_fields`)
+
+Set `emit_null_optional_fields = false` when serializing API requests. Some providers (e.g., OpenAI's gpt-image-1) reject parameters that are valid for other models in the same family (e.g., `"style"` is valid for dall-e-3 but rejected by gpt-image-1). Omitting null optional fields avoids sending parameters the user hasn't explicitly set, preventing these cross-model compatibility errors.

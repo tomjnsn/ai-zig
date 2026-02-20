@@ -16,9 +16,16 @@ pub const OpenAIImageResponse = struct {
         revised_prompt: ?[]const u8 = null,
     };
 
+    pub const TokensDetails = struct {
+        image_tokens: ?u64 = null,
+        text_tokens: ?u64 = null,
+    };
+
     pub const Usage = struct {
         input_tokens: ?u64 = null,
+        input_tokens_details: ?TokensDetails = null,
         output_tokens: ?u64 = null,
+        output_tokens_details: ?TokensDetails = null,
         total_tokens: ?u64 = null,
     };
 };

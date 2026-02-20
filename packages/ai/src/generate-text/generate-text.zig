@@ -369,7 +369,67 @@ pub fn generateText(
                         .tool => {},
                     }
                 },
-                .parts => {},
+                .parts => |parts| {
+                    switch (msg.role) {
+                        .system => {
+                            for (parts) |part| {
+                                switch (part) {
+                                    .text => |t| {
+                                        prompt_msgs.append(arena_allocator, provider_types.language_model.systemMessage(t.text)) catch return GenerateTextError.OutOfMemory;
+                                    },
+                                    else => {},
+                                }
+                            }
+                        },
+                        .user => {
+                            var user_parts = std.ArrayList(prompt_types.UserPart).empty;
+                            for (parts) |part| {
+                                switch (part) {
+                                    .text => |t| {
+                                        user_parts.append(arena_allocator, .{ .text = .{ .text = t.text } }) catch return GenerateTextError.OutOfMemory;
+                                    },
+                                    .file => |f| {
+                                        user_parts.append(arena_allocator, .{ .file = .{
+                                            .data = .{ .base64 = f.data },
+                                            .media_type = f.mime_type,
+                                        } }) catch return GenerateTextError.OutOfMemory;
+                                    },
+                                    else => {},
+                                }
+                            }
+                            if (user_parts.items.len > 0) {
+                                prompt_msgs.append(arena_allocator, .{
+                                    .role = .user,
+                                    .content = .{ .user = user_parts.items },
+                                }) catch return GenerateTextError.OutOfMemory;
+                            }
+                        },
+                        .assistant => {
+                            var asst_parts = std.ArrayList(prompt_types.AssistantPart).empty;
+                            for (parts) |part| {
+                                switch (part) {
+                                    .text => |t| {
+                                        asst_parts.append(arena_allocator, .{ .text = .{ .text = t.text } }) catch return GenerateTextError.OutOfMemory;
+                                    },
+                                    .file => |f| {
+                                        asst_parts.append(arena_allocator, .{ .file = .{
+                                            .data = .{ .base64 = f.data },
+                                            .media_type = f.mime_type,
+                                        } }) catch return GenerateTextError.OutOfMemory;
+                                    },
+                                    else => {},
+                                }
+                            }
+                            if (asst_parts.items.len > 0) {
+                                prompt_msgs.append(arena_allocator, .{
+                                    .role = .assistant,
+                                    .content = .{ .assistant = asst_parts.items },
+                                }) catch return GenerateTextError.OutOfMemory;
+                            }
+                        },
+                        .tool => {},
+                    }
+                },
             }
         }
 

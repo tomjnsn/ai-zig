@@ -218,6 +218,8 @@ pub fn generateImage(
                     .mime_type = "image/png",
                 };
             }
+            // Free the intermediate provider slice; individual strings are now referenced by images
+            if (base64_images.len > 0) allocator.free(base64_images);
             return GenerateImageResult{
                 .images = images,
                 .usage = .{
@@ -227,7 +229,6 @@ pub fn generateImage(
                     .model_id = gen_success.response.model_id,
                     .timestamp = gen_success.response.timestamp,
                 },
-                .warnings = null,
             };
         },
         .binary => |binary_images| {
@@ -251,7 +252,6 @@ pub fn generateImage(
                     .model_id = gen_success.response.model_id,
                     .timestamp = gen_success.response.timestamp,
                 },
-                .warnings = null,
             };
         },
     }
@@ -314,12 +314,16 @@ test "generateImage returns image from mock provider" {
         pub fn doGenerate(
             _: *const Self,
             _: provider_types.ImageModelV3CallOptions,
-            _: std.mem.Allocator,
+            result_allocator: std.mem.Allocator,
             callback: *const fn (?*anyopaque, ImageModelV3.GenerateResult) void,
             ctx: ?*anyopaque,
         ) void {
+            // Heap-allocate to match real provider behavior
+            const b64_data = result_allocator.dupe(u8, "aW1hZ2VfZGF0YQ==") catch unreachable;
+            const b64_slice = result_allocator.alloc([]const u8, 1) catch unreachable;
+            b64_slice[0] = b64_data;
             callback(ctx, .{ .success = .{
-                .images = .{ .base64 = &mock_base64 },
+                .images = .{ .base64 = b64_slice },
                 .response = .{
                     .timestamp = 1234567890,
                     .model_id = "mock-image",
@@ -335,7 +339,12 @@ test "generateImage returns image from mock provider" {
         .model = &model,
         .prompt = "A beautiful sunset",
     });
-    defer std.testing.allocator.free(result.images);
+    defer {
+        for (result.images) |img| {
+            if (img.base64) |b64| std.testing.allocator.free(b64);
+        }
+        std.testing.allocator.free(result.images);
+    }
 
     // Should have 1 image
     try std.testing.expectEqual(@as(usize, 1), result.images.len);

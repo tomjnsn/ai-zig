@@ -166,8 +166,6 @@ fn convertMessage(
 }
 
 fn convertUserPart(allocator: std.mem.Allocator, part: lm.language_model_v3_prompt.UserPart) !api.OpenAIChatRequest.ContentPart {
-    _ = allocator;
-
     switch (part) {
         .text => |t| {
             return .{
@@ -177,17 +175,17 @@ fn convertUserPart(allocator: std.mem.Allocator, part: lm.language_model_v3_prom
             };
         },
         .file => |f| {
-            // Convert file to image_url if it's an image
-            const data_url = switch (f.data) {
+            // Convert file to image_url content part
+            const url = switch (f.data) {
                 .url => |u| u,
-                .base64 => |b64| b64, // Would need to prepend data URI
-                .binary => "binary data not directly supported",
+                .base64 => |b64| try std.fmt.allocPrint(allocator, "data:{s};base64,{s}", .{ f.media_type, b64 }),
+                .binary => return error.UnsupportedContentType,
             };
 
             return .{
                 .image_url = .{
                     .image_url = .{
-                        .url = data_url,
+                        .url = url,
                     },
                 },
             };

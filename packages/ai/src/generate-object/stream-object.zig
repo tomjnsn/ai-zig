@@ -4,6 +4,7 @@ const generate_text = @import("../generate-text/generate-text.zig");
 const generate_object = @import("generate-object.zig");
 
 const LanguageModelV3 = provider_types.LanguageModelV3;
+const prompt_types = provider_types.language_model.language_model_v3_prompt;
 const LanguageModelUsage = generate_text.LanguageModelUsage;
 const ResponseMetadata = generate_text.ResponseMetadata;
 const CallSettings = generate_text.CallSettings;
@@ -259,7 +260,57 @@ pub fn streamObject(
                         else => {},
                     }
                 },
-                .parts => {},
+                .parts => |parts| {
+                    switch (msg.role) {
+                        .user => {
+                            var user_parts = std.ArrayList(prompt_types.UserPart).empty;
+                            for (parts) |part| {
+                                switch (part) {
+                                    .text => |t| {
+                                        user_parts.append(arena_allocator, .{ .text = .{ .text = t.text } }) catch return StreamObjectError.OutOfMemory;
+                                    },
+                                    .file => |f| {
+                                        user_parts.append(arena_allocator, .{ .file = .{
+                                            .data = .{ .base64 = f.data },
+                                            .media_type = f.mime_type,
+                                        } }) catch return StreamObjectError.OutOfMemory;
+                                    },
+                                    else => {},
+                                }
+                            }
+                            if (user_parts.items.len > 0) {
+                                prompt_msgs.append(arena_allocator, .{
+                                    .role = .user,
+                                    .content = .{ .user = user_parts.items },
+                                }) catch return StreamObjectError.OutOfMemory;
+                            }
+                        },
+                        .assistant => {
+                            var asst_parts = std.ArrayList(prompt_types.AssistantPart).empty;
+                            for (parts) |part| {
+                                switch (part) {
+                                    .text => |t| {
+                                        asst_parts.append(arena_allocator, .{ .text = .{ .text = t.text } }) catch return StreamObjectError.OutOfMemory;
+                                    },
+                                    .file => |f| {
+                                        asst_parts.append(arena_allocator, .{ .file = .{
+                                            .data = .{ .base64 = f.data },
+                                            .media_type = f.mime_type,
+                                        } }) catch return StreamObjectError.OutOfMemory;
+                                    },
+                                    else => {},
+                                }
+                            }
+                            if (asst_parts.items.len > 0) {
+                                prompt_msgs.append(arena_allocator, .{
+                                    .role = .assistant,
+                                    .content = .{ .assistant = asst_parts.items },
+                                }) catch return StreamObjectError.OutOfMemory;
+                            }
+                        },
+                        else => {},
+                    }
+                },
             }
         }
     }
