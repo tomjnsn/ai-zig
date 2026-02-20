@@ -35,9 +35,14 @@ pub const GoogleGenerativeAILanguageModel = lang_model.GoogleGenerativeAILanguag
 pub const embed_model = @import("google-generative-ai-embedding-model.zig");
 pub const GoogleGenerativeAIEmbeddingModel = embed_model.GoogleGenerativeAIEmbeddingModel;
 
-// Image model
+// Image model (Imagen predict API)
 pub const image_model = @import("google-generative-ai-image-model.zig");
 pub const GoogleGenerativeAIImageModel = image_model.GoogleGenerativeAIImageModel;
+
+// Image model (Gemini generateContent API)
+pub const gemini_image = @import("google-gemini-image-model.zig");
+pub const GoogleGeminiImageModel = gemini_image.GoogleGeminiImageModel;
+pub const isGeminiImageModel = gemini_image.isGeminiImageModel;
 
 // Options
 pub const options = @import("google-generative-ai-options.zig");

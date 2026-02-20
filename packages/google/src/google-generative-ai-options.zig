@@ -52,6 +52,9 @@ pub const ImageModels = struct {
     pub const imagen_4_0_generate = "imagen-4.0-generate-001";
     pub const imagen_4_0_ultra = "imagen-4.0-ultra-generate-001";
     pub const imagen_4_0_fast = "imagen-4.0-fast-generate-001";
+    // Gemini image models (use generateContent endpoint, not predict)
+    pub const gemini_2_5_flash_image = "gemini-2.5-flash-image";
+    pub const gemini_3_pro_image_preview = "gemini-3-pro-image-preview";
 };
 
 /// Harm category for safety settings
