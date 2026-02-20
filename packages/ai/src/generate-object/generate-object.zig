@@ -52,8 +52,16 @@ pub const GenerateObjectResult = struct {
     /// Internal: holds the parsed JSON for cleanup
     _parsed: ?std.json.Parsed(std.json.Value) = null,
 
+    /// Internal: allocator used to dupe owned strings
+    _allocator: ?std.mem.Allocator = null,
+
     /// Clean up resources
     pub fn deinit(self: *GenerateObjectResult) void {
+        if (self._allocator) |alloc| {
+            alloc.free(self.raw_text);
+            alloc.free(self.response.id);
+            alloc.free(self.response.model_id);
+        }
         if (self._parsed) |p| {
             p.deinit();
         }
@@ -180,7 +188,7 @@ pub fn generateObject(
 
     options.model.doGenerate(
         call_options,
-        allocator,
+        arena_allocator,
         struct {
             fn onResult(ptr: ?*anyopaque, result: LanguageModelV3.GenerateResult) void {
                 const ctx: *CallbackCtx = @ptrCast(@alignCast(ptr.?));
@@ -207,6 +215,10 @@ pub fn generateObject(
         }
     }
 
+    // Dupe raw_text to base allocator so it outlives the arena
+    raw_text = allocator.dupe(u8, raw_text) catch return GenerateObjectError.OutOfMemory;
+    errdefer allocator.free(raw_text);
+
     // Parse JSON from model output
     const parsed = parseJsonOutput(allocator, raw_text) catch return GenerateObjectError.ParseError;
 
@@ -223,23 +235,33 @@ pub fn generateObject(
         .output_tokens = gen_success.usage.output_tokens.total,
     };
 
+    // Dupe response strings to base allocator so they outlive the arena
+    const raw_id = if (gen_success.response) |r| r.metadata.id orelse "" else "";
+    const owned_id = allocator.dupe(u8, raw_id) catch return GenerateObjectError.OutOfMemory;
+    errdefer allocator.free(owned_id);
+
+    const model_id = options.model.getModelId();
+    const raw_model_id = if (gen_success.response) |r| r.metadata.model_id orelse model_id else model_id;
+    const owned_model_id = allocator.dupe(u8, raw_model_id) catch return GenerateObjectError.OutOfMemory;
+    errdefer allocator.free(owned_model_id);
+
     return GenerateObjectResult{
         .object = parsed.value,
         ._parsed = parsed,
+        ._allocator = allocator,
         .raw_text = raw_text,
         .usage = usage,
         .response = blk: {
-            const model_id = options.model.getModelId();
             if (gen_success.response) |r| {
                 break :blk ResponseMetadata{
-                    .id = r.metadata.id orelse "",
-                    .model_id = r.metadata.model_id orelse model_id,
+                    .id = owned_id,
+                    .model_id = owned_model_id,
                     .timestamp = r.metadata.timestamp orelse 0,
                 };
             } else {
                 break :blk ResponseMetadata{
-                    .id = "",
-                    .model_id = model_id,
+                    .id = owned_id,
+                    .model_id = owned_model_id,
                     .timestamp = 0,
                 };
             }

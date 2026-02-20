@@ -142,10 +142,12 @@ test "live: OpenAI streamText" {
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
+    defer http_client.deinit();
     var provider = openai.createOpenAIWithSettings(alloc, .{
         .api_key = api_key,
         .http_client = http_client.asInterface(),
     });
+    defer provider.deinit();
 
     var model = provider.languageModel("gpt-4o-mini");
     var lm = model.asLanguageModel();
@@ -246,11 +248,13 @@ test "live: Azure streamText" {
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
+    defer http_client.deinit();
     var provider = azure.createAzureWithSettings(alloc, .{
         .api_key = api_key,
         .resource_name = resource_name,
         .http_client = http_client.asInterface(),
     });
+    defer provider.deinit();
 
     var model = provider.chat(deployment_name);
     var lm = model.asLanguageModel();
@@ -342,10 +346,12 @@ test "live: Anthropic streamText" {
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
+    defer http_client.deinit();
     var provider = anthropic.createAnthropicWithSettings(alloc, .{
         .api_key = api_key,
         .http_client = http_client.asInterface(),
     });
+    defer provider.deinit();
 
     var model = provider.languageModel("claude-sonnet-4-5-20250929");
     var lm = model.asLanguageModel();
@@ -437,10 +443,12 @@ test "live: Google streamText" {
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
+    defer http_client.deinit();
     var provider = google.createGoogleGenerativeAIWithSettings(alloc, .{
         .api_key = api_key,
         .http_client = http_client.asInterface(),
     });
+    defer provider.deinit();
 
     var model = provider.languageModel("gemini-2.0-flash");
     var lm = model.asLanguageModel();
@@ -533,10 +541,12 @@ test "live: xAI streamText" {
     const alloc = testing.allocator;
 
     var http_client = provider_utils.createStdHttpClient(alloc);
+    defer http_client.deinit();
     var provider = xai.createXaiWithSettings(alloc, .{
         .api_key = api_key,
         .http_client = http_client.asInterface(),
     });
+    defer provider.deinit();
 
     var model = provider.languageModel("grok-3-mini-fast");
     var lm = model.asLanguageModel();

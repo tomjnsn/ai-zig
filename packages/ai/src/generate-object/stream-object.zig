@@ -403,7 +403,7 @@ pub fn streamObject(
     // completes all callbacks synchronously before returning.
     var bridge = BridgeCtx{ .res = result, .cbs = options.callbacks, .schema = options.schema.json_schema };
     const bridge_ptr: *anyopaque = @ptrCast(&bridge);
-    options.model.doStream(call_options, allocator, .{
+    options.model.doStream(call_options, arena_allocator, .{
         .on_part = BridgeCtx.onPart,
         .on_error = BridgeCtx.onError,
         .on_complete = BridgeCtx.onComplete,
