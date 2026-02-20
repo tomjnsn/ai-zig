@@ -257,6 +257,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
         // Create context for callback
         const ResponseContext = struct {
             response_body: ?[]const u8 = null,
+            response_status_code: ?u16 = null,
             response_error: ?provider_utils.HttpError = null,
         };
         var response_ctx = ResponseContext{};
@@ -274,6 +275,7 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
                 fn onResponse(ctx: ?*anyopaque, response: provider_utils.HttpResponse) void {
                     const rctx: *ResponseContext = @ptrCast(@alignCast(ctx.?));
                     rctx.response_body = response.body;
+                    rctx.response_status_code = response.status_code;
                 }
             }.onResponse,
             struct {
@@ -304,6 +306,18 @@ pub const GoogleGenerativeAIEmbeddingModel = struct {
             callback(callback_context, .{ .failure = error.NoResponse });
             return;
         };
+
+        // Check HTTP status code for non-success responses
+        if (response_ctx.response_status_code) |sc| {
+            if (sc < 200 or sc >= 300) {
+                if (call_options.error_diagnostic) |diag| {
+                    diag.provider = self.config.provider;
+                    diag.populateFromResponse(sc, response_body);
+                }
+                callback(callback_context, .{ .failure = error.HttpRequestFailed });
+                return;
+            }
+        }
 
         // Parse response and extract embeddings
         var embed_list = std.ArrayList(embedding.EmbeddingModelV3Embedding).empty;

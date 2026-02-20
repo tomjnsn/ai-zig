@@ -365,7 +365,7 @@ pub const GoogleGenerativeAILanguageModel = struct {
                                             self.is_text_active = true;
                                         }
                                         // Emit text delta
-                                        const text_copy = self.result_allocator.dupe(u8, text) catch continue;
+                                        const text_copy = self.request_allocator.dupe(u8, text) catch continue;
                                         self.callbacks.on_part(self.callbacks.ctx, .{
                                             .text_delta = .{ .id = "text", .delta = text_copy },
                                         });
@@ -378,12 +378,12 @@ pub const GoogleGenerativeAILanguageModel = struct {
                                                 self.callbacks.on_error(self.callbacks.ctx, err);
                                                 return;
                                             };
-                                            args_str = self.result_allocator.dupe(u8, serialized) catch "{}";
+                                            args_str = self.request_allocator.dupe(u8, serialized) catch "{}";
                                         }
                                         self.callbacks.on_part(self.callbacks.ctx, .{
                                             .tool_call = .{
-                                                .tool_call_id = self.result_allocator.dupe(u8, fc.name) catch "",
-                                                .tool_name = self.result_allocator.dupe(u8, fc.name) catch "",
+                                                .tool_call_id = self.request_allocator.dupe(u8, fc.name) catch "",
+                                                .tool_name = self.request_allocator.dupe(u8, fc.name) catch "",
                                                 .input = args_str,
                                             },
                                         });

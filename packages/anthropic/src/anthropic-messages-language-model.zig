@@ -603,7 +603,7 @@ const StreamState = struct {
                             .input = std.ArrayList(u8).empty,
                         });
                         self.callbacks.on_part(self.callbacks.ctx, .{
-                            .text_start = .{ .id = try std.fmt.allocPrint(self.result_allocator, "{d}", .{index}) },
+                            .text_start = .{ .id = try std.fmt.allocPrint(self.stream_allocator, "{d}", .{index}) },
                         });
                     },
                     .thinking => {
@@ -612,7 +612,7 @@ const StreamState = struct {
                             .input = std.ArrayList(u8).empty,
                         });
                         self.callbacks.on_part(self.callbacks.ctx, .{
-                            .reasoning_start = .{ .id = try std.fmt.allocPrint(self.result_allocator, "{d}", .{index}) },
+                            .reasoning_start = .{ .id = try std.fmt.allocPrint(self.stream_allocator, "{d}", .{index}) },
                         });
                     },
                     .tool_use => |tu| {
@@ -640,7 +640,7 @@ const StreamState = struct {
                     .text_delta => |td| {
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .text_delta = .{
-                                .id = try std.fmt.allocPrint(self.result_allocator, "{d}", .{index}),
+                                .id = try std.fmt.allocPrint(self.stream_allocator, "{d}", .{index}),
                                 .delta = td.text,
                             },
                         });
@@ -648,7 +648,7 @@ const StreamState = struct {
                     .thinking_delta => |td| {
                         self.callbacks.on_part(self.callbacks.ctx, .{
                             .reasoning_delta = .{
-                                .id = try std.fmt.allocPrint(self.result_allocator, "{d}", .{index}),
+                                .id = try std.fmt.allocPrint(self.stream_allocator, "{d}", .{index}),
                                 .delta = td.thinking,
                             },
                         });
@@ -672,7 +672,7 @@ const StreamState = struct {
             const index = chunk.index orelse return;
 
             if (self.content_blocks.get(index)) |block| {
-                const id = try std.fmt.allocPrint(self.result_allocator, "{d}", .{index});
+                const id = try std.fmt.allocPrint(self.stream_allocator, "{d}", .{index});
 
                 switch (block.block_type) {
                     .text => {
